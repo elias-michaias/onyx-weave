@@ -1,0 +1,227 @@
+use core {
+    printf, println, stdio, Result
+}
+
+use core.io { 
+    Reader 
+}
+
+Nil :: #distinct rawptr
+nil :: cast(Nil, null)
+
+FxHandleable :: interface (T: type_expr) {
+    t as T
+    t->handle()
+}
+
+FxHandleableVoid :: interface (T: type_expr) {
+    t as T
+    { t->handle() } -> void
+}
+
+FxHasHandler :: interface (T: type_expr) {
+    t as T
+    t->handler()
+}
+
+FxWrapper :: interface (T: type_expr) {
+    t as T
+    t.fx
+}
+
+Impure :: interface (T: type_expr) {
+    t as T
+    t->handle()
+}
+
+Pure :: interface (T: type_expr) {
+    t as T
+    { check(t) } -> bool
+
+    check :: #match {
+        macro (self: $R/FxHandleable) => {}
+        macro (self: $R) => true
+    }
+}
+
+is :: interface (T: type_expr, R: type_expr) {
+    t as T
+    { check(t, R) } -> bool
+
+    check :: #match {
+        macro (self: $E/FxWrapper, $r: type_expr) => check(self.fx, r)
+        macro (self: type_expr, $r: type_expr) => check(self.{}, r)
+        macro (self: $E/FxHandleableVoid, $r: type_expr) => true
+        macro (self: $R/FxHandleable, $r: type_expr) => check(typeof self->handle(), r)
+        macro (self: r, $r: type_expr) => true
+        macro (self: $R, $r: type_expr) => {}
+    }
+}
+
+run :: #match {
+    macro (e: $E/FxHandleableVoid) => {
+        e->handle()
+    }
+    macro (e: $E/FxHandleable) => {
+        output := e->handle()
+        return run(output)
+    }
+    macro (e: $E/FxWrapper) => run(e.fx)
+    macro (e: $E) => e
+}
+
+Console :: struct {
+    Read :: struct (K: type_expr) {
+        k: (str) -> K
+
+        handle :: #match {
+            (self: Read($K)) -> K where FxHasHandler(Read(K)) {
+                return Console.Read.handler(self)
+            }
+            (self: Read($K)) -> K {
+                stdin_reader := Reader.make(&stdio.stream)
+                defer Reader.free(&stdin_reader)
+                line := stdin_reader |> .read_line |> .strip_whitespace
+                return self.k(line)
+            }
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Console.Read.handle(t)
+        }
+
+        t :: struct {
+            new :: macro ($R: type_expr) => Console.Read(R).{}
+            empty :: macro () => Console.Read(void).{}
+        }
+    }
+    read :: (k: (str) -> $T) => Read(T).{k}
+
+    Print :: struct (K: type_expr) {
+        p: str
+        k: () -> K
+        
+        handle :: #match {
+            (self: Print($K)) -> K where FxHasHandler(Print(K)) {
+                return Console.Print.handler(self)
+            }
+            (self: Print($K)) -> K {
+                printf("{}", self.p)
+                return self.k()
+            }
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Console.Print.handle(t)
+        }
+
+        t :: struct {
+            new :: macro ($R: type_expr) => Console.Print(R).{}
+            empty :: macro () => Console.Print(void).{}
+        }
+    }
+    print :: (input: str, k: () -> $T) => Print(T).{input, k}
+}
+
+fx :: struct {
+    _1 :: interface (T: type_expr, R1: type_expr) {
+        t as T
+        { check(t, typeof R1.empty()) } -> bool
+
+        check :: #match {
+            macro (self: $T/FxWrapper, $r1: type_expr) => check(self.fx, r1)
+            macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
+            macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr) => true
+            macro (self: $T/r1.handleable, $r1: type_expr) => check(typeof self->handle(), r1)
+            macro (self: $T/FxHandleable, $r1: type_expr) => {}
+            macro (self: $T, $r1: type_expr) => true
+        }
+    }
+    _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
+        t as T
+        { check(t, typeof R1.empty(), typeof R2.empty()) } -> bool
+
+        check :: #match {
+            macro (self: $T/FxWrapper, $r1: type_expr, $r2: type_expr) => check(self.fx, r1, r2)
+            macro (self: type_expr, $r1: type_expr, $r2: type_expr) => check(self.{}, r1, r2)
+            macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr, $r2: type_expr) => true
+            macro (self: $T/r1.handleable, $r1: type_expr, $r2: type_expr) => check(typeof self->handle(), r1, r2)
+            macro (self: $T/{r2.handleable, FxHandleableVoid}, $r1: type_expr, $r2: type_expr) => true
+            macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr) => check(typeof self->handle(), r1, r2)
+            macro (self: $T/FxHandleable, $r1: type_expr, $r2: type_expr) => {}
+            macro (self: $T, $r1: type_expr, $r2: type_expr) => true
+        }
+    }
+}
+
+Fx :: struct {
+    get_returns :: #match {
+        macro (fx: type_expr) => get_returns(fx.{})
+        macro (fx: $T/FxHandleableVoid) -> type_expr { return void } 
+        macro (fx: $T/FxHandleable) => get_returns(typeof fx->handle())
+        macro (fx: $T) => fx
+    }
+    _1 :: struct (R: type_expr, E1: type_expr) {
+        fx: typeof E1.new(R)
+
+        new :: macro (fx: $T/FxHandleable) => {
+            return _1(typeof get_returns(fx), T.t).{ fx }
+        } 
+    }
+    _2 :: struct (R: type_expr, E1: type_expr, E2: type_expr) {
+        fx: typeof E1.new(typeof E2.new(R))
+
+        get_second :: #match {
+            macro (fx: type_expr) => fx.{}
+            macro (fx: $T/FxHandleable) => get_second(typeof fx->handle())
+        } 
+
+        new :: macro (fx: $T/FxHandleable) => {
+            return _1(typeof get_returns(fx), T.t, typeof get_second(fx).t)
+        }
+    }
+}
+
+// MODULE CODE ^
+//
+// USAGE CODE v
+
+Console.Print.handler :: (self: #Self) => {
+    printf("{}!!!!!!\n", self.p)
+    return self.k()
+}
+
+program :: () => {
+    __tmp__ := Console.read(x => x)
+    return __tmp__
+}
+
+/*
+program :: () => fx!{
+    x := yield Console.read()
+    yield Console.print(x)
+    return 12
+}
+*/
+
+// Available predicates:
+// is(Type) = fully handling resolves to Type
+// fx._N = only these effects are allowed
+console_map :: (f: () -> $T/{
+    is(str),
+    fx._2(Console.Read.t, Console.Print.t)
+}) -> T {
+    return f()
+}
+
+main :: () {
+    println(typeof program)
+
+    result := program
+        |> console_map 
+        |> run
+
+    println(result)
+}

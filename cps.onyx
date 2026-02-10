@@ -1,0 +1,141 @@
+use core {
+    printf, println, stdio
+}
+
+use core.io { 
+    Reader 
+}
+
+Console :: struct {
+  Read :: struct (T: type_expr) {
+    __padding := true
+
+    yields :: (r: Read($T)) => T.{}
+
+    handle :: (r: Read(str), k: (str) -> $T) -> T {
+      stdin_reader := Reader.make(&stdio.stream)
+      defer Reader.free(&stdin_reader)
+      line := stdin_reader |> .read_line |> .strip_whitespace
+      return k(line)
+    }
+  }
+  read :: () -> Read(str) {
+    return Read(str).{}
+  }
+
+  Print :: struct (T: type_expr) {
+    input: str
+
+    yields :: (r: Print($T)) => T.{}
+
+    handle :: (r: Print(void), k: () -> $R) -> R {
+      println(r.input)
+      return k()
+    }
+  }
+  print :: (input: str) -> Print(void) {
+    return Print(void).{ input }
+  }
+}
+
+
+run :: #match {
+  macro (r: $E, k: () -> void) -> void {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+    r->handle(k)
+  }
+  macro (r: $E, k: ($T) -> void) -> void {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+    r->handle(k)
+  }
+  macro (r: $E, k: () -> ($R, $K)) -> void {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+    r1, k1 := r->handle(k)
+    run(r1, k1)
+  }
+  macro (r: $E, k: ($T) -> ($R, $K)) -> void {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+    r1, k1 := r->handle(k)
+    run(r1, k1)
+  }
+}
+
+runw :: #match {
+  (r: $E, k: () -> $R) -> #auto {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+
+    r1, k1 := r->handle(k)
+    return runw(r1, k1)
+  }
+  (r: $E, k: ($T) -> $R) -> #auto {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+
+    r2, k2 := r->handle(k)
+    return runw(r2, k2)
+  }
+  (r: $E, k: ($T) -> $R) -> R {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+
+    r1 := r->handle(k)
+    return r1
+  }
+  (r: $E, k: () -> $R) -> R {
+    printf("STEP: ({}, {})\n", typeof r, typeof k)
+
+    r1 := r->handle(k)
+    return r1
+  }
+}
+
+program :: (x: str) => {
+  y := "World!\n"
+  z := str.concat(x, y)
+
+  __tmp1 := Console.read()
+  return (__tmp1, (w: typeof Console.read()->yields()) use (z) => {
+    v := str.concat(z, w)
+
+    __tmp2 := Console.print(v)
+    return (__tmp2, () => {
+
+      println("Next stage...\n")  
+
+      __tmp3 := Console.print("Done!\n")
+      return (__tmp3, () => {
+        println("Actually done!\n")  
+      })
+    })
+  })
+}
+
+other :: () => {
+  x := "Hello, "
+
+  return program(x)
+}
+
+/* 
+  program :: () => cont!{
+    x := "Hello, "
+    y := "World!\n"
+    z := str.concat(x, y)
+
+    w := yield Console.read()
+    
+    v := str.concat(z, w)
+
+    yield Console.print(v)
+
+    println("Next stage...\n")
+
+    yield Console.print("Done!\n")
+
+    println("Actually done!\n")
+  }
+*/
+
+main :: () {
+    r, k := program("Hello, ")
+    printf("r: {}, k: {}\n", typeof r, typeof k)
+    run(r, k)
+}
