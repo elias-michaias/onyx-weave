@@ -36,6 +36,9 @@ Parsed_Line :: struct {
     
     // Original line
     original: str;
+    
+    // Variables defined in this line (for regular statements and typed yields)
+    defines_var: str;
 }
 
 handle_fx_macro :: (
@@ -110,10 +113,34 @@ collect_statements :: (body: str) -> [..] str {
     return statements;
 }
 
+// Extract variable name from assignment (handles both := and : Type =)
+extract_defined_var :: (line: str) -> str {
+    // Look for := first
+    colon_eq := line->index_of(":=");
+    if colon_eq != -1 {
+        var_name := line[0 .. colon_eq];
+        var_name->strip_whitespace();
+        return var_name;
+    }
+    
+    // Look for : Type =
+    colon_idx := line->index_of(':');
+    equals_idx := line->index_of('=');
+    
+    if colon_idx != -1 && equals_idx != -1 && colon_idx < equals_idx {
+        var_name := line[0 .. colon_idx];
+        var_name->strip_whitespace();
+        return var_name;
+    }
+    
+    return "";
+}
+
 parse_line :: (line: str) -> Parsed_Line {
     result: Parsed_Line;
     result.original = line;
     result.type = .Unknown;
+    result.defines_var = "";
     
     // Check for return statement
     if line->starts_with("return") {
@@ -131,6 +158,7 @@ parse_line :: (line: str) -> Parsed_Line {
     // Check for yield
     if !line->contains("yield") {
         result.type = .Regular;
+        result.defines_var = extract_defined_var(line);
         return result;
     }
     
@@ -138,6 +166,7 @@ parse_line :: (line: str) -> Parsed_Line {
     yield_index := line->index_of("yield");
     if yield_index == -1 {
         result.type = .Regular;
+        result.defines_var = extract_defined_var(line);
         return result;
     }
     
@@ -160,6 +189,7 @@ parse_line :: (line: str) -> Parsed_Line {
     if colon_eq_index != -1 {
         result.var_name = before_yield[0 .. colon_eq_index];
         result.var_name->strip_whitespace();
+        result.defines_var = result.var_name;
         result.type = .Type_Inferred_Yield;
         return result;
     }
@@ -175,12 +205,30 @@ parse_line :: (line: str) -> Parsed_Line {
         result.var_type = before_yield[colon_index + 1 .. equals_index];
         result.var_type->strip_whitespace();
         
+        result.defines_var = result.var_name;
         result.type = .Type_Specified_Yield;
         return result;
     }
     
     result.type = .Regular;
     return result;
+}
+
+// Simple lexical analysis: find identifiers in code that match variable names
+find_referenced_vars :: (code: str, defined_vars: [..] str) -> [..] str {
+    referenced: [..] str;
+    referenced.allocator = context.temp_allocator;
+    
+    for var in defined_vars {
+        if var.count == 0 do continue;
+        
+        // Simple check: does the variable name appear in the code?
+        if code->contains(var) {
+            array.push(&referenced, var);
+        }
+    }
+    
+    return referenced;
 }
 
 // Helper to insert continuation into effect call
@@ -263,7 +311,6 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         start_index = cast(i32) lines.count - 2;
     } elseif last.type == .Type_Inferred_Yield || last.type == .Type_Specified_Yield || last.type == .Non_Binding_Yield {
         // Last line is a yield - it needs an empty continuation
-        // We'll handle this by not setting initial code and processing all lines
         start_index = cast(i32) lines.count - 1;
     } else {
         // Last line is a regular statement - just return it
@@ -272,19 +319,167 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         start_index = cast(i32) lines.count - 2;
     }
     
-    // Work backwards through yields, wrapping each in a continuation
-    i := start_index;
+    // Track variables that need to be captured at each yield
+    captures_needed: [..] [..] str;
+    captures_needed.allocator = context.temp_allocator;
+    
+    // Initialize with empty capture lists
+    for _ in 0 .. lines.count {
+        empty_list: [..] str;
+        empty_list.allocator = context.temp_allocator;
+        array.push(&captures_needed, empty_list);
+    }
+    
+    // Build list of variables defined before each yield
+    // These are variables that CAN be captured at that yield
+    vars_defined_before: [..] [..] str;
+    vars_defined_before.allocator = context.temp_allocator;
+    
+    all_defined: [..] str;
+    all_defined.allocator = context.temp_allocator;
+    
+    for idx in 0 .. lines.count {
+        line := lines[idx];
+        
+        // Save all vars defined up to this point
+        defined_copy: [..] str;
+        defined_copy.allocator = context.temp_allocator;
+        for v in all_defined {
+            array.push(&defined_copy, v);
+        }
+        array.push(&vars_defined_before, defined_copy);
+        
+        // Add any new definitions
+        if line.defines_var.count > 0 {
+            array.push(&all_defined, line.defines_var);
+        }
+    }
+    
+    // Now determine captures: work backwards through yields
+    // For each yield, check what variables from BEFORE it are referenced AFTER the next yield
+    i := cast(i32) lines.count - 1;
     while i >= 0 {
         defer i -= 1;
         
         line := lines[i];
+        
+        if line.type == .Type_Inferred_Yield || line.type == .Type_Specified_Yield || line.type == .Non_Binding_Yield {
+            // Find the next yield after this one
+            next_yield_idx := -1;
+            for j in (i + 1) .. lines.count {
+                if lines[j].type == .Type_Inferred_Yield || lines[j].type == .Type_Specified_Yield || lines[j].type == .Non_Binding_Yield {
+                    next_yield_idx = j;
+                    break;
+                }
+            }
+            
+            // Build the code snippet that will be in the inner continuation
+            // (everything after the next yield, or after the last regular statement if no more yields)
+            inner_code: dyn_str;
+            inner_code.allocator = context.temp_allocator;
+            
+            start_checking: i32;
+            if next_yield_idx != -1 {
+                start_checking = next_yield_idx + 1;
+            } else {
+                start_checking = i + 1;
+            }
+            
+            for j in start_checking .. lines.count {
+                inner_code->append(lines[j].original);
+                inner_code->append(" ");
+            }
+            
+            // Find which variables from before this yield are referenced in the inner code
+            vars_before := vars_defined_before[i];
+            referenced := find_referenced_vars(inner_code, vars_before);
+            
+            for ref_var in referenced {
+                array.push(&captures_needed[i], ref_var);
+            }
+            
+            // Also propagate captures from the next yield if there is one
+            // If the next yield captures something from before this yield, we need to capture it too
+            if next_yield_idx != -1 {
+                next_captures := captures_needed[next_yield_idx];
+                for captured_var in next_captures {
+                    // Check if this variable was defined before this yield
+                    var_is_from_before := false;
+                    for v in vars_before {
+                        if v == captured_var {
+                            var_is_from_before = true;
+                            break;
+                        }
+                    }
+                    
+                    // If it's from before this yield, we need to capture it too
+                    if var_is_from_before {
+                        // Check if we're not already capturing it
+                        already_captured := false;
+                        for already in captures_needed[i] {
+                            if already == captured_var {
+                                already_captured = true;
+                                break;
+                            }
+                        }
+                        
+                        if !already_captured {
+                            array.push(&captures_needed[i], captured_var);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Second pass: build the CPS code backwards
+    code.count = 0; // Reset code
+    
+    if last.type == .Return_Statement {
+        code->append("return ");
+        code->append(last.return_value);
+    } elseif last.type == .Type_Inferred_Yield || last.type == .Type_Specified_Yield || last.type == .Non_Binding_Yield {
+        // Will be handled in the loop
+    } else {
+        code->append("return ");
+        code->append(last.original);
+    }
+    
+    // Work backwards through yields, wrapping each in a continuation
+    i = start_index;
+    while i >= 0 {
+        defer i -= 1;
+        
+        line := lines[i];
+        
+        // Get the captures for this yield
+        captures := captures_needed[i];
+        
+        // Build use clause if we have captures
+        use_clause: str;
+        if captures.count > 0 {
+            use_buf: dyn_str;
+            use_buf.allocator = context.temp_allocator;
+            use_buf->append(" use (");
+            for j in 0 .. captures.count {
+                if j > 0 do use_buf->append(", ");
+                use_buf->append(captures[j]);
+            }
+            use_buf->append(")");
+            use_clause = use_buf;
+        } else {
+            use_clause = "";
+        }
         
         switch line.type {
             case .Type_Inferred_Yield {
                 // Build continuation
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
+                continuation->append("(");
                 continuation->append(line.var_name);
+                continuation->append(")");
+                continuation->append(use_clause);
                 continuation->append(" => {\n        ");
                 
                 // If this is the last yield and there's no code yet, add empty body
@@ -313,7 +508,9 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 continuation->append(line.var_name);
                 continuation->append(": ");
                 continuation->append(line.var_type);
-                continuation->append(") => {\n        ");
+                continuation->append(")");
+                continuation->append(use_clause);
+                continuation->append(" => {\n        ");
                 
                 // If this is the last yield and there's no code yet, add empty body
                 if code.count == 0 {
@@ -337,7 +534,9 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 // Build continuation with no parameters
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
-                continuation->append("() => {\n        ");
+                continuation->append("()");
+                continuation->append(use_clause);
+                continuation->append(" => {\n        ");
                 
                 // If this is the last yield and there's no code yet, add empty body
                 if code.count == 0 {

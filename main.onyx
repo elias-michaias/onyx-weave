@@ -345,29 +345,34 @@ Console.Print.handler :: macro (self: #Self) => {
 }
 
 
-program :: () => {
-    return Console.read(x => {
-        y := str.concat(x, "+ bar\n")
-        z := 8
-        return Console.print(y, () use (z) => {
-            println("toot")
-            return Console.print("floop", () use (z) => {
-                return Console.read((w) use (z) => {
-                    return Console.print(w, () use (z) => {
-                        return z + 12
-                    })
-                })
-            })
-        })
-    })
-}
-
-// program :: () => fx!{
-//     x: str = yield Console.read()
-//     y := str.concat(x, "+ bar\n")
-//     yield Console.print(y)
-//     return 12
+// program :: () => {
+//     return Console.read(x => {
+//         y := str.concat(x, "+ bar\n")
+//         z := 8
+//         return Console.print(y, () use (z) => {
+//             println("toot")
+//             return Console.print("floop", () use (z) => {
+//                 return Console.read((w) use (z) => {
+//                     return Console.print(w, () use (z) => {
+//                         return z + 12
+//                     })
+//                 })
+//             })
+//         })
+//     })
 // }
+
+program :: () => fx!{
+    q := "oop"
+    w := 39
+    x: str = yield Console.read()
+    println(q)
+    y := str.concat(x, "?")
+    yield Console.print(y)
+    t := 201
+    yield Console.print("turkey")
+    return 12 + w + t
+}
 
 console_map :: (f: () -> $T/{
     Fx.returns(i32),

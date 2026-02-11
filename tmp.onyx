@@ -3,3 +3,19 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:365:20
+do {
+    q := "oop"
+        w := 39
+        return Console.read((x: str) use (w) => {
+        println(q)
+        y := str.concat(x, "?")
+        return Console.print(y, () use (w) => {
+        t := 201
+        return Console.print("turkey", () use (w, t) => {
+        return 12 + w + t
+    })
+    })
+    })
+}
+
