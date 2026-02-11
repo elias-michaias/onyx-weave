@@ -2,6 +2,7 @@ package main
 
 // Declare the fx! compiler extension
 ext :: #compiler_extension "ext.onyx" {fx}
+fx :: ext.fx
 
 use core {
     printf, println, stdio, Result
@@ -97,7 +98,7 @@ Console :: struct {
     print :: (input: str, k: () -> $T) => Print(T).{input, k}
 }
 
-fx :: struct {
+Fx :: struct {
     returns :: interface (T: type_expr, R: type_expr) {
         t as T
         { check(t, R) } -> bool
@@ -343,28 +344,34 @@ Console.Print.handler :: macro (self: #Self) => {
     return self.k()
 }
 
-/*
+
 program :: () => {
     return Console.read(x => {
-        return Console.read(y => {
-            return Console.print(y, () => {
-                return 12
+        y := str.concat(x, "+ bar\n")
+        z := 8
+        return Console.print(y, () use (z) => {
+            println("toot")
+            return Console.print("floop", () use (z) => {
+                return Console.read((w) use (z) => {
+                    return Console.print(w, () use (z) => {
+                        return z + 12
+                    })
+                })
             })
         })
     })
 }
-*/
 
-program :: () => ext.fx!{
-    x: str = yield Console.read()
-    y := str.concat(x, "+ bar\n")
-    yield Console.print(y)
-    return 12
-}
+// program :: () => fx!{
+//     x: str = yield Console.read()
+//     y := str.concat(x, "+ bar\n")
+//     yield Console.print(y)
+//     return 12
+// }
 
 console_map :: (f: () -> $T/{
-    fx.returns(i32),
-    fx.can._2(Console.Read.t, Console.Print.t)
+    Fx.returns(i32),
+    Fx.can._2(Console.Read.t, Console.Print.t)
 }) => {
     return f()
 }
@@ -372,7 +379,9 @@ console_map :: (f: () -> $T/{
 main :: () {
     println(typeof program)
 
-    program
+    result := program
         |> console_map 
         |> run
+
+    println(result)
 }
