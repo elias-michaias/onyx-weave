@@ -24,38 +24,9 @@ FxHasHandler :: interface (T: type_expr) {
     t->handler()
 }
 
-FxWrapper :: interface (T: type_expr) {
+FxSequence :: interface (T: type_expr) {
     t as T
-    t.fx
-}
-
-Impure :: interface (T: type_expr) {
-    t as T
-    t->handle()
-}
-
-Pure :: interface (T: type_expr) {
-    t as T
-    { check(t) } -> bool
-
-    check :: #match {
-        macro (self: $R/FxHandleable) => {}
-        macro (self: $R) => true
-    }
-}
-
-is :: interface (T: type_expr, R: type_expr) {
-    t as T
-    { check(t, R) } -> bool
-
-    check :: #match {
-        macro (self: $E/FxWrapper, $r: type_expr) => check(self.fx, r)
-        macro (self: type_expr, $r: type_expr) => check(self.{}, r)
-        macro (self: $E/FxHandleableVoid, $r: type_expr) => true
-        macro (self: $R/FxHandleable, $r: type_expr) => check(typeof self->handle(), r)
-        macro (self: r, $r: type_expr) => true
-        macro (self: $R, $r: type_expr) => {}
-    }
+    t->fx_next()
 }
 
 run :: #match {
@@ -66,7 +37,6 @@ run :: #match {
         output := e->handle()
         return run(output)
     }
-    macro (e: $E/FxWrapper) => run(e.fx)
     macro (e: $E) => e
 }
 
@@ -126,60 +96,151 @@ Console :: struct {
 }
 
 fx :: struct {
-    _1 :: interface (T: type_expr, R1: type_expr) {
+    is :: interface (T: type_expr, R: type_expr) {
         t as T
-        { check(t, typeof R1.empty()) } -> bool
+        { check(t, R) } -> bool
 
         check :: #match {
-            macro (self: $T/FxWrapper, $r1: type_expr) => check(self.fx, r1)
-            macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
-            macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr) => true
-            macro (self: $T/r1.handleable, $r1: type_expr) => check(typeof self->handle(), r1)
-            macro (self: $T/FxHandleable, $r1: type_expr) => {}
-            macro (self: $T, $r1: type_expr) => true
+            macro (self: type_expr, $r: type_expr) => check(self.{}, r)
+            macro (self: $E/FxHandleableVoid, $r: type_expr) => true
+            macro (self: $R/FxHandleable, $r: type_expr) => check(typeof self->handle(), r)
+            macro (self: r, $r: type_expr) => true
+            macro (self: $R, $r: type_expr) => {}
         }
     }
-    _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
+    impure :: interface (T: type_expr) {
         t as T
-        { check(t, typeof R1.empty(), typeof R2.empty()) } -> bool
+        t->handle()
+    }
+
+    pure :: interface (T: type_expr) {
+        t as T
+        { check(t) } -> bool
 
         check :: #match {
-            macro (self: $T/FxWrapper, $r1: type_expr, $r2: type_expr) => check(self.fx, r1, r2)
-            macro (self: type_expr, $r1: type_expr, $r2: type_expr) => check(self.{}, r1, r2)
-            macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr, $r2: type_expr) => true
-            macro (self: $T/r1.handleable, $r1: type_expr, $r2: type_expr) => check(typeof self->handle(), r1, r2)
-            macro (self: $T/{r2.handleable, FxHandleableVoid}, $r1: type_expr, $r2: type_expr) => true
-            macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr) => check(typeof self->handle(), r1, r2)
-            macro (self: $T/FxHandleable, $r1: type_expr, $r2: type_expr) => {}
-            macro (self: $T, $r1: type_expr, $r2: type_expr) => true
+            macro (self: $R/FxHandleable) => {}
+            macro (self: $R) => true
         }
     }
-}
+    can :: struct {
+        _1 :: interface (T: type_expr, R1: type_expr) {
+            t as T
+            { check(t, typeof R1.empty()) } -> bool
 
-Fx :: struct {
-    get_returns :: #match {
-        macro (fx: type_expr) => get_returns(fx.{})
-        macro (fx: $T/FxHandleableVoid) -> type_expr { return void } 
-        macro (fx: $T/FxHandleable) => get_returns(typeof fx->handle())
-        macro (fx: $T) => fx
+            check :: #match {
+                macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
+                macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr) => true
+                macro (self: $T/r1.handleable, $r1: type_expr) => check(typeof self->handle(), r1)
+                macro (self: $T/FxHandleable, $r1: type_expr) => {}
+                macro (self: $T, $r1: type_expr) => true
+            }
+        }
+        _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
+            t as T
+            { check(t, typeof R1.empty(), typeof R2.empty()) } -> bool
+
+            check :: #match {
+                macro (self: type_expr, $r1: type_expr, $r2: type_expr) => check(self.{}, r1, r2)
+                macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr, $r2: type_expr) => true
+                macro (self: $T/r1.handleable, $r1: type_expr, $r2: type_expr) => check(typeof self->handle(), r1, r2)
+                macro (self: $T/{r2.handleable, FxHandleableVoid}, $r1: type_expr, $r2: type_expr) => true
+                macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr) => check(typeof self->handle(), r1, r2)
+                macro (self: $T/FxHandleable, $r1: type_expr, $r2: type_expr) => {}
+                macro (self: $T, $r1: type_expr, $r2: type_expr) => true
+            }
+        }
     }
-    _1 :: struct (R: type_expr, E1: type_expr) {
-        fx: typeof E1.new(R)
+    not :: struct {
+        _1 :: interface (T: type_expr, R1: type_expr) {
+            t as T
+            { check(t, typeof R1.empty()) } -> bool
 
-        new :: macro (fx: $T/FxHandleable) => {
-            return _1(typeof get_returns(fx), T.t).{ fx }
-        } 
+            check :: #match {
+                macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
+                macro (self: $T/r1.handleable, $r1: type_expr) => {}
+                macro (self: $T/FxHandleable, $r1: type_expr) => check(typeof self->handle(), r1)
+                macro (self: $T, $r1: type_expr) => true
+            }
+        }
+        _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
+            t as T
+            { check(t, typeof R1.empty()) } -> bool
+            { check(t, typeof R2.empty()) } -> bool
+
+            check :: #match {
+                macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
+                macro (self: $T/r1.handleable, $r1: type_expr) => {}
+                macro (self: $T/FxHandleable, $r1: type_expr) => check(typeof self->handle(), r1)
+                macro (self: $T, $r1: type_expr) => true
+            }
+        }
     }
-    _2 :: struct (R: type_expr, E1: type_expr, E2: type_expr) {
-        fx: typeof E1.new(typeof E2.new(R))
+    must :: struct {
+        _1 :: interface (T: type_expr, R1: type_expr) {
+            t as T
+            { check(t, typeof R1.empty()) } -> bool
 
-        get_second :: #match {
-            macro (fx: type_expr) => fx.{}
-            macro (fx: $T/FxHandleable) => get_second(typeof fx->handle())
-        } 
+            check :: #match {
+                macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
+                macro (self: $T/r1.handleable, $r1: type_expr) => true
+                macro (self: $T/FxHandleable, $r1: type_expr) => check(typeof self->handle(), r1)
+                macro (self: $T, $r1: type_expr) => {}
+            }
+        }
 
-        new :: macro (fx: $T/FxHandleable) => {
-            return _1(typeof get_returns(fx), T.t, typeof get_second(fx).t)
+        _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
+            t as T
+            { check(t, typeof R1.empty()) } -> bool
+            { check(t, typeof R2.empty()) } -> bool
+
+            check :: #match {
+                macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
+                macro (self: $T/r1.handleable, $r1: type_expr) => true
+                macro (self: $T/FxHandleable, $r1: type_expr) => check(typeof self->handle(), r1)
+                macro (self: $T, $r1: type_expr) => {}
+            }
+        }
+    }
+    seq :: struct {
+        must :: struct {
+            _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
+                t as T
+                { check(t, typeof R1.empty(), typeof R2.empty(), false) } -> bool
+                
+                check :: #match {
+                    macro (self: type_expr, $r1: type_expr, $r2: type_expr, $r1d: bool) => check(self.{}, r1, r2, r1d)
+                    macro (self: $T/r1.handleable, $r1: type_expr, $r2: type_expr, $r1d: bool) -> #auto where !r1d {
+                        return check(typeof self->handle(), r1, r2, true)
+                    }
+                    macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr, $r1d: bool) -> #auto where !r1d {}
+                    macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr, $r1d: bool) -> #auto where r1d {
+                        return true
+                    }
+                    macro (self: $T/FxHandleable, $r1: type_expr, $r2: type_expr, $r1d: bool) => check(typeof self->handle(), r1, r2, r1d)
+                    macro (self: $T, $r1: type_expr, $r2: type_expr, $r1d: bool) => {}
+                }
+            }
+            _3 :: interface (T: type_expr, R1: type_expr, R2: type_expr, R3: type_expr) {
+                t as T
+                { check(t, typeof R1.empty(), typeof R2.empty(), typeof R3.empty(), false, false) } -> bool
+                
+                check :: #match {
+                    macro (self: type_expr, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) => check(self.{}, r1, r2, r3, r1d, r2d)
+                    macro (self: $T/r1.handleable, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) -> #auto where !r1d && !r2d {
+                        return check(typeof self->handle(), r1, r2, r3, true, r2d)
+                    }
+                    macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) -> #auto where !r1d {}
+                    macro (self: $T/r2.handleable, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) -> #auto where r1d {
+                        return check(typeof self->handle(), r1, r2, r3, r1d, true)
+                    }
+                    macro (self: $T/r3.handleable, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) -> #auto where !r2d {}
+                    macro (self: $T/r3.handleable, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) -> #auto where r2d {
+                        return true
+                    }
+                    macro (self: $T/FxHandleable, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) => check(typeof self->handle(), r1, r2, r3, r1d, r2d)
+                    macro (self: $T, $r1: type_expr, $r2: type_expr, $r3: type_expr, $r1d: bool, $r2d: bool) => {}
+                }
+            }
         }
     }
 }
@@ -188,38 +249,32 @@ Fx :: struct {
 //
 // USAGE CODE v
 
-Console.Print.handler :: (self: #Self) => {
+Console.Print.handler :: macro (self: #Self) => {
     printf("{}!!!!!!\n", self.p)
     return self.k()
 }
 
-program :: () => {
-    __tmp__ := Console.read(x => x)
-    return __tmp__
+program_1 :: () => {
+    return Console.read(x => {
+        return Console.read(y => {
+            return Console.print(y, () => {
+                return "baz"
+            })
+        })
+    })
 }
 
-/*
-program :: () => fx!{
-    x := yield Console.read()
-    yield Console.print(x)
-    return 12
-}
-*/
-
-// Available predicates:
-// is(Type) = fully handling resolves to Type
-// fx._N = only these effects are allowed
 console_map :: (f: () -> $T/{
-    is(str),
-    fx._2(Console.Read.t, Console.Print.t)
+    fx.is(str),
+    fx.seq.must._3(Console.Read.t, Console.Read.t, Console.Print.t)
 }) -> T {
     return f()
 }
 
 main :: () {
-    println(typeof program)
+    println(typeof program_1)
 
-    result := program
+    result := program_1
         |> console_map 
         |> run
 
