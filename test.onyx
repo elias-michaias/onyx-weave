@@ -1,15 +1,17 @@
 use core {*}
 
-Foo :: struct (T: []type_expr) {
-    __padding := true
 
-    iterate :: (self: Foo([]type_expr), idx: i32) {
-        println(T[idx])
-        iterate(self, idx + 1)
-    }
+dummy :: #match {
+}
+
+program :: () => {
+    return str.concat("Hello, ", "World!\n")
+}
+
+hof :: (f: () -> $T) -> T {
+    return f()
 }
 
 main :: () {
-    test := Foo(type_expr.[i32, str]).{}
-    Foo.iterate(test, 0)
+    program() |> println
 }
