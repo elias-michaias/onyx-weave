@@ -1,3 +1,8 @@
+package main
+
+// Declare the fx! compiler extension
+ext :: #compiler_extension "ext.onyx" {fx}
+
 use core {
     printf, println, stdio, Result
 }
@@ -93,7 +98,7 @@ Console :: struct {
 }
 
 fx :: struct {
-    is :: interface (T: type_expr, R: type_expr) {
+    returns :: interface (T: type_expr, R: type_expr) {
         t as T
         { check(t, R) } -> bool
 
@@ -109,7 +114,6 @@ fx :: struct {
         t as T
         t->handle()
     }
-
     pure :: interface (T: type_expr) {
         t as T
         { check(t) } -> bool
@@ -334,16 +338,13 @@ fx :: struct {
     }
 }
 
-// MODULE CODE ^
-//
-// USAGE CODE v
-
 Console.Print.handler :: macro (self: #Self) => {
     printf("{}!!!!!!\n", self.p)
     return self.k()
 }
 
-program_1 :: () => {
+/*
+program :: () => {
     return Console.read(x => {
         return Console.read(y => {
             return Console.print(y, () => {
@@ -352,21 +353,26 @@ program_1 :: () => {
         })
     })
 }
+*/
+
+program :: () => ext.fx!{
+    x: str = yield Console.read()
+    y := str.concat(x, "+ bar\n")
+    yield Console.print(y)
+    return 12
+}
 
 console_map :: (f: () -> $T/{
-    fx.is(i32),
-    // fails to compile: program does this sequence of effects
-    fx.seq.can._3(Console.Read.t, Console.Read.t, Console.Print.t)
+    fx.returns(i32),
+    fx.can._2(Console.Read.t, Console.Print.t)
 }) => {
     return f()
 }
 
 main :: () {
-    println(typeof program_1)
+    println(typeof program)
 
-    result := program_1
+    program
         |> console_map 
         |> run
-
-    println(result)
 }

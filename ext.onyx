@@ -1,0 +1,405 @@
+#load "core:onyx/compiler_extension"
+
+use onyx.compiler_extension {*}
+use core {eprintf, tprintf, Result}
+use core.string
+use core.array
+
+main :: () {
+    ext := ExtensionContext.make("Fx Effect System Extension")
+
+    ext->handle_macro("fx", handle_fx_macro)
+
+    ext->start(message_handler)
+}
+
+// Represents a parsed line from the fx! block
+Line_Type :: enum {
+    Unknown;
+    Type_Inferred_Yield;    // x := yield Effect()
+    Type_Specified_Yield;   // x: Type = yield Effect()
+    Non_Binding_Yield;      // yield Effect()
+    Return_Statement;       // return value
+    Regular;                // any other statement
+}
+
+Parsed_Line :: struct {
+    type: Line_Type;
+    
+    // For yields
+    var_name: str;
+    var_type: str;  // empty if type-inferred
+    effect: str;
+    
+    // For return
+    return_value: str;
+    
+    // Original line
+    original: str;
+}
+
+handle_fx_macro :: (
+    ext: &ExtensionContext,
+    em: ExpansionInfo
+) -> Result(str, ExpansionFailureReason) {
+    body := em.body;
+    body->strip_whitespace();
+    
+    // Parse all statements (handling multi-line parens)
+    lines: [..] Parsed_Line;
+    lines.allocator = context.temp_allocator;
+    
+    statements := collect_statements(body);
+    
+    for stmt in statements {
+        stmt->strip_whitespace();
+        if stmt.count == 0 do continue;
+        
+        parsed := parse_line(stmt);
+        array.push(&lines, parsed);
+    }
+    
+    if lines.count == 0 {
+        return .{ Err = .NotSupported };
+    }
+    
+    // Build the CPS transformation from inside out
+    code := build_cps(lines);
+    
+    return .{ Ok = code };
+}
+
+// Collect statements, respecting paren matching for multi-line calls
+collect_statements :: (body: str) -> [..] str {
+    statements: [..] str;
+    statements.allocator = context.temp_allocator;
+    
+    current: dyn_str;
+    current.allocator = context.temp_allocator;
+    
+    paren_depth := 0;
+    
+    for line_str in body->split_iter("\n") {
+        // Count parens in this line
+        for i in line_str.count {
+            if line_str[i] == '(' do paren_depth += 1;
+            elseif line_str[i] == ')' do paren_depth -= 1;
+        }
+        
+        // Add line to current statement
+        if current.count > 0 {
+            current->append(" ");
+        }
+        current->append(line_str);
+        
+        // If parens are balanced, we have a complete statement
+        if paren_depth == 0 && current.count > 0 {
+            // Copy the string before adding it
+            stmt_copy := string.copy(current, allocator=context.temp_allocator);
+            array.push(&statements, stmt_copy);
+            current.count = 0; // Reset for next statement
+        }
+    }
+    
+    // Add any remaining content
+    if current.count > 0 {
+        stmt_copy := string.copy(current, allocator=context.temp_allocator);
+        array.push(&statements, stmt_copy);
+    }
+    
+    return statements;
+}
+
+parse_line :: (line: str) -> Parsed_Line {
+    result: Parsed_Line;
+    result.original = line;
+    result.type = .Unknown;
+    
+    // Check for return statement
+    if line->starts_with("return") {
+        result.type = .Return_Statement;
+        // Skip "return" (6 characters) and get the rest
+        if line.count > 6 {
+            result.return_value = line[6 .. line.count];
+            result.return_value->strip_whitespace();
+        } else {
+            result.return_value = "";
+        }
+        return result;
+    }
+    
+    // Check for yield
+    if !line->contains("yield") {
+        result.type = .Regular;
+        return result;
+    }
+    
+    // Parse yield patterns
+    yield_index := line->index_of("yield");
+    if yield_index == -1 {
+        result.type = .Regular;
+        return result;
+    }
+    
+    before_yield := line[0 .. yield_index];
+    before_yield->strip_whitespace();
+    
+    after_yield := line[yield_index + 5 .. line.count];
+    after_yield->strip_whitespace();
+    
+    result.effect = after_yield;
+    
+    // Non-binding yield (no assignment before yield)
+    if before_yield.count == 0 {
+        result.type = .Non_Binding_Yield;
+        return result;
+    }
+    
+    // Check for type-inferred binding: "x :="
+    colon_eq_index := before_yield->index_of(":=");
+    if colon_eq_index != -1 {
+        result.var_name = before_yield[0 .. colon_eq_index];
+        result.var_name->strip_whitespace();
+        result.type = .Type_Inferred_Yield;
+        return result;
+    }
+    
+    // Check for type-specified binding: "x: Type ="
+    colon_index := before_yield->index_of(':');
+    equals_index := before_yield->last_index_of('=');
+    
+    if colon_index != -1 && equals_index != -1 {
+        result.var_name = before_yield[0 .. colon_index];
+        result.var_name->strip_whitespace();
+        
+        result.var_type = before_yield[colon_index + 1 .. equals_index];
+        result.var_type->strip_whitespace();
+        
+        result.type = .Type_Specified_Yield;
+        return result;
+    }
+    
+    result.type = .Regular;
+    return result;
+}
+
+// Helper to insert continuation into effect call
+insert_continuation :: (effect: str, continuation: str) -> str {
+    result: dyn_str;
+    result.allocator = context.temp_allocator;
+    
+    // Find the first opening paren
+    open_paren := effect->index_of('(');
+    if open_paren == -1 {
+        // No parens? Just append them with continuation
+        result->append(effect);
+        result->append("(");
+        result->append(continuation);
+        result->append(")");
+        return result;
+    }
+    
+    // Find the matching closing paren by counting depth
+    paren_depth := 0;
+    close_paren := -1;
+    
+    for i in open_paren .. effect.count {
+        if effect[i] == '(' {
+            paren_depth += 1;
+        } elseif effect[i] == ')' {
+            paren_depth -= 1;
+            if paren_depth == 0 {
+                close_paren = i;
+                break;
+            }
+        }
+    }
+    
+    if close_paren == -1 {
+        // Malformed - no matching paren
+        result->append(effect);
+        result->append("(");
+        result->append(continuation);
+        result->append(")");
+        return result;
+    }
+    
+    // Get the content between parens
+    args_section := effect[open_paren + 1 .. close_paren];
+    args_section->strip_whitespace();
+    
+    // Build result: everything before ), then continuation, then )
+    result->append(effect[0 .. close_paren]);
+    
+    // If there are existing args, add comma and space
+    if args_section.count > 0 {
+        result->append(", ");
+    }
+    
+    result->append(continuation);
+    result->append(")");
+    
+    return result;
+}
+
+build_cps :: (lines: [] Parsed_Line) -> str {
+    code: dyn_str;
+    code.allocator = context.temp_allocator;
+    
+    // Start from the last statement
+    if lines.count == 0 {
+        return "";
+    }
+    
+    last := lines[lines.count - 1];
+    
+    // Determine the starting index for backwards iteration
+    start_index: i32;
+    
+    if last.type == .Return_Statement {
+        // We have an explicit return - use it as the base
+        code->append("return ");
+        code->append(last.return_value);
+        start_index = cast(i32) lines.count - 2;
+    } elseif last.type == .Type_Inferred_Yield || last.type == .Type_Specified_Yield || last.type == .Non_Binding_Yield {
+        // Last line is a yield - it needs an empty continuation
+        // We'll handle this by not setting initial code and processing all lines
+        start_index = cast(i32) lines.count - 1;
+    } else {
+        // Last line is a regular statement - just return it
+        code->append("return ");
+        code->append(last.original);
+        start_index = cast(i32) lines.count - 2;
+    }
+    
+    // Work backwards through yields, wrapping each in a continuation
+    i := start_index;
+    while i >= 0 {
+        defer i -= 1;
+        
+        line := lines[i];
+        
+        switch line.type {
+            case .Type_Inferred_Yield {
+                // Build continuation
+                continuation: dyn_str;
+                continuation.allocator = context.temp_allocator;
+                continuation->append(line.var_name);
+                continuation->append(" => {\n        ");
+                
+                // If this is the last yield and there's no code yet, add empty body
+                if code.count == 0 {
+                    continuation->append("return");
+                } else {
+                    continuation->append(code);
+                }
+                
+                continuation->append("\n    }");
+                
+                // Insert into effect call
+                wrapped: dyn_str;
+                wrapped.allocator = context.temp_allocator;
+                wrapped->append("return ");
+                wrapped->append(insert_continuation(line.effect, continuation));
+                
+                code = wrapped;
+            }
+            
+            case .Type_Specified_Yield {
+                // Build continuation with typed parameter
+                continuation: dyn_str;
+                continuation.allocator = context.temp_allocator;
+                continuation->append("(");
+                continuation->append(line.var_name);
+                continuation->append(": ");
+                continuation->append(line.var_type);
+                continuation->append(") => {\n        ");
+                
+                // If this is the last yield and there's no code yet, add empty body
+                if code.count == 0 {
+                    continuation->append("return");
+                } else {
+                    continuation->append(code);
+                }
+                
+                continuation->append("\n    }");
+                
+                // Insert into effect call
+                wrapped: dyn_str;
+                wrapped.allocator = context.temp_allocator;
+                wrapped->append("return ");
+                wrapped->append(insert_continuation(line.effect, continuation));
+                
+                code = wrapped;
+            }
+            
+            case .Non_Binding_Yield {
+                // Build continuation with no parameters
+                continuation: dyn_str;
+                continuation.allocator = context.temp_allocator;
+                continuation->append("() => {\n        ");
+                
+                // If this is the last yield and there's no code yet, add empty body
+                if code.count == 0 {
+                    continuation->append("return");
+                } else {
+                    continuation->append(code);
+                }
+                
+                continuation->append("\n    }");
+                
+                // Insert into effect call
+                wrapped: dyn_str;
+                wrapped.allocator = context.temp_allocator;
+                wrapped->append("return ");
+                wrapped->append(insert_continuation(line.effect, continuation));
+                
+                code = wrapped;
+            }
+            
+            case .Return_Statement {
+                // Already handled as last statement
+                continue;
+            }
+            
+            case .Regular, .Unknown {
+                // Regular statements need to be prepended to the current code
+                wrapped: dyn_str;
+                wrapped.allocator = context.temp_allocator;
+                wrapped->append(line.original);
+                wrapped->append("\n        ");
+                wrapped->append(code);
+                
+                code = wrapped;
+            }
+        }
+    }
+    
+    // Wrap in a do block to make it an expression
+    final: dyn_str;
+    final.allocator = context.temp_allocator;
+    final->append("do {\n    ");
+    final->append(code);
+    final->append("\n}");
+    
+    return final;
+}
+
+message_handler :: (ext, msg) => {
+    eprintf("Fx Extension Message: {p}\n", msg)
+
+    switch msg {
+        case .ExpandMacro as em {
+            // All macros are handled via handle_macro above
+            // This shouldn't be reached, but send NotSupported just in case
+            ext->send(.{
+                Expansion = .{
+                    id = em.id,
+                    code = .{ Err = .NotSupported }
+                }
+            })
+        }
+
+        case _ {}
+    }
+}

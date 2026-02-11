@@ -1,0 +1,15 @@
+//
+// THIS FILE WAS AUTOMATICALLY GENERATED FROM THE ONYX COMPILER.
+// DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
+//
+
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:358:24
+do {
+    return Console.read((x: str) => {
+        y := str.concat(x, "+ bar\n")
+        return Console.print(y, () => {
+        return 12
+    })
+    })
+}
+
