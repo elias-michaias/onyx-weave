@@ -4,29 +4,30 @@ use core {*}
 
 #load "module.onyx"
 
-Console.Print.handler :: macro (self: #Self) => {
-    printf("{}!!!!!!\n", self.p)
-    return self.k()
+FxError :: enum {
+    PrintFoo
+    GuardTriggered
 }
 
-// program :: () => {
-//     return Console.read(x => {
-//         z := 12
-//         return Console.print(x, () use (z) => {
-//             return z + 12
-//         })
-//     })
-// }
+Console.Print.handler :: (self: Console.Print($K)) -> Result(K, FxError) {
+    if self.p == "foo" do return .{ Err = FxError.PrintFoo }
+    printf("{}!!!!!!\n", self.p)
+    return .{ Ok = self.k() }
+}
 
 program :: () => fx!{
+    yield Console.print("init")
     x := yield Console.read()
-    yield Console.print(x)
+    w := yield Console.read()
+    yield Console.print(w)
+    yield guard(false, FxError.GuardTriggered)
     return 12
 }
 
 console_map :: (f: () -> $T/{
     Fx.returns(i32),
-    Fx.can._1(Console.t)
+    Fx.can._2(Console.t, Guard.t),
+    Fx.can.fail
 }) => {
     return f()
 }
@@ -37,6 +38,8 @@ main :: () {
     result := program
         |> console_map 
         |> run
+
+    println("Done.")
 
     println(result)
 }

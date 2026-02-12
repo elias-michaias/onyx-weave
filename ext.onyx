@@ -6,7 +6,7 @@ use core.string
 use core.array
 
 main :: () {
-    ext := ExtensionContext.make("Fx Effect System Extension")
+    ext := ExtensionContext.make("effective: direct-style effect extension")
 
     ext->handle_macro("fx", handle_fx_macro)
 
@@ -577,7 +577,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     // Wrap in a do block to make it an expression
     final: dyn_str;
     final.allocator = context.temp_allocator;
-    final->append("do {\n    ");
+    final->append("do do {\n    ");
     final->append(code);
     final->append("\n}");
     
