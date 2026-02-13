@@ -32,28 +32,110 @@ FxHasHandler :: interface (T: type_expr) {
     t->handler()
 }
 
-run :: #match {
-    macro (e: Result($T/FxHandleable, $E)) => {
-        switch e {
-            case .Ok as ok {
-                output := ok->handle()
-                return run(output)
+#inject Result {
+    throw :: #match {
+        (self: Result($T, $E), k: (T) -> $K) -> Result(K, E) {
+            switch self {
+                case .Ok as ok {
+                    return .{ Ok = k(ok) }
+                }
+                case .Err as err {
+                    return .{ Err = err }
+                }
             }
-            case .Err as err {
-                return .{ Err = err }
+        }
+        (self: Result($T, $E), k: () -> $K) -> Result(K, E) {
+            switch self {
+                case .Ok {
+                    return .{ Ok = k() }
+                }
+                case .Err as err {
+                    return .{ Err = err }
+                }
             }
         }
     }
-    macro (e: Optional($T/FxHandleable)) => {
-        switch e {
-            case .Some as some {
-                output := some->handle()
-                return run(output)
-            }
-            case .None {
-                return .{}
+    guard :: #match {
+        (self: Result($T, $E), k: (T) -> $K) -> Result(K, Resumable(E, T, K)) {
+            switch self {
+                case .Ok as ok {
+                    return .{ Ok = k(ok) }
+                }
+                case .Err as err {
+                    return .{ Err = Resumable(E, T, K).{err, k} }
+                }
             }
         }
+        (self: Result($T, $E), k: () -> $K) -> Result(K, ResumableVoid(E, K)) {
+            switch self {
+                case .Ok as ok {
+                    return .{ Ok = k() }
+                }
+                case .Err as err {
+                    return .{ Err = ResumableVoid(E, K).{err, k} }
+                }
+            }
+        }
+    }
+}
+
+#inject Optional {
+    throw :: #match {
+        (self: Optional($T), k: (T) -> $K) -> Optional(K) {
+            switch self {
+                case .Some as s {
+                    return .{ Some = k(s) }
+                }
+                case .None {
+                    return .{}
+                }
+            }
+        }
+        (self: Optional($T), k: () -> $K) -> Optional(K) {
+            switch self {
+                case .Some {
+                    return .{ Some = k() }
+                }
+                case .None {
+                    return .{}
+                }
+            }
+        }
+    }
+    guard :: #match {
+        (self: Optional($T), k: (T) -> $K) -> Result(K, Continuation(T, K)) {
+            switch self {
+                case .Some as s {
+                    return .{ Ok = k(s) }
+                }
+                case .None {
+                    return .{ Err = Continuation(T, K).{k} }
+                }
+            }
+        }
+        (self: Optional($T), k: () -> $K) -> Result(K, ContinuationVoid(K)) {
+            switch self {
+                case .Some as s {
+                    return .{ Ok = k() }
+                }
+                case .None {
+                    return .{ Err = ContinuationVoid(T).{k} }
+                }
+            }
+        }
+    }
+}
+
+run :: #match {
+    macro (e: Result($T/FxHandleable, $E)) -> Result(typeof T.{} |> .handle |> run, E) {
+        switch e {
+            case .Ok as ok do return .{ Ok = run(ok->handle()) }
+            case .Err as err do return .{ Err = err }
+        }
+    }
+    macro (e: Optional($T/FxHandleable)) => switch e {
+        case .Some as some => run(some->handle())
+        case .None => .{}
     }
     macro (e: $E/FxHandleableVoid) => {
         e->handle()
@@ -65,18 +147,58 @@ run :: #match {
     macro (e: $E) => e
 }
 
-Guard :: struct (E: type_expr, K: type_expr) {
-    p: bool
-    err: E
+Resumable :: struct (E: type_expr, I: type_expr, K: type_expr) {
+    p: E
+    k: (I) -> K
+
+    resume :: macro (self: Resumable($E, $I, $K), input: I) => self.k(input)
+}
+
+ResumableVoid :: struct (E: type_expr, K: type_expr) {
+    p: E
     k: () -> K
 
+    resume :: macro (self: ResumableVoid($E, $K)) => self.k()
+}
+
+Continuation :: struct (I: type_expr, K: type_expr) {
+    k: (I) -> K
+
+    resume :: macro (self: Continuation($I, $K), input: I) => self.k(input)
+}
+
+ContinuationVoid :: struct (K: type_expr) {
+    k: () -> K
+
+    resume :: macro (self: ContinuationVoid($K)) => self.k()
+}
+
+Guard :: union (E: type_expr, I: type_expr, K: type_expr) {
+
+    Ok: (I) -> K
+    Err: Resumable(E, I, K)    
+
+    concretize :: macro ($T: type_expr) => T.{}
+
+    err :: (err: $E, k: ($I) -> $T) -> Guard(E, I, T) {
+        return Guard(E, I, T).{ Err = .{err, k} }
+    }
+
+    ok :: (err: $E, k: ($I) -> $T) -> Guard(E, T) {
+        return Guard(E, I, T).{ Ok = k }
+    }
+
     handle :: #match {
-        (self: Guard($E, $K)) -> #auto where FxHasHandler(Guard(E, K)) {
-            return Guard.handler(self)
-        }
-        (self: Guard($E, $K)) -> Result(K, E) {
-            if self.p do return .{ Err = self.err }
-            return .{ Ok = self.k() }
+        (self: Guard($E, $I, $K)) => K.{}
+        (self: Guard($E, $I, $K), input: $I) -> Guard(E, I, typeof run(K.{})) {
+            switch self {
+                case .Ok as ok {
+                    return .{ Ok = run(ok(input)) }
+                }
+                case .Err as err {
+                    return self
+                }
+            }
         }
     }
 
@@ -86,11 +208,52 @@ Guard :: struct (E: type_expr, K: type_expr) {
     }
 
     t :: struct {
-        empty :: macro () => Guard(void, void).{}
+        empty :: macro () => Guard(void, void, void).{}
     }
 }
 
-guard :: (cond: bool, err: $E, k: () -> $T) => Guard(E, T).{cond, err, k}
+GuardVoid :: union (E: type_expr, K: type_expr) {
+
+    Ok: () -> K
+    Err: ResumableVoid(E, K)    
+
+    concretize :: macro ($T: type_expr) => T.{}
+
+    err :: (err: $E, k: () -> $T) -> GuardVoid(E, T) {
+        return GuardVoid(E, T).{ Err = .{err, k} }
+    }
+
+    ok :: (err: $E, k: () -> $T) -> GuardVoid(E, T) {
+        return GuardVoid(E, T).{ Ok = k }
+    }
+
+    handle :: #match {
+        (self: GuardVoid($E, $K)) => {
+            switch self {
+                case .Ok as ok {
+                    return ok()
+                }
+                case .Err as err {
+                    return err.k()
+                }
+            }
+        }
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        GuardVoid.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => GuardVoid(void, void).{}
+    }
+}
+
+guard :: (cond: bool, err: $E, k: () -> $T) -> Guard(E, T) {
+    if cond do return Guard(E, T).{ Err = .{err, k} }
+    return Guard(E, T).{ Ok = k }
+}
 
 Console :: struct {
     Read :: struct (K: type_expr) {
@@ -168,6 +331,8 @@ Fx :: struct {
             macro (self: type_expr, $r: type_expr) => check(self.{}, r)
             macro (self: Optional($T), $r: type_expr) => check(T.{}, r)
             macro (self: Result($T, $E), $r: type_expr) => check(T.{}, r)
+            macro (self: Guard($E, $K/FxHandleable), $r: type_expr) => check(typeof K.handle(K.{}), r)
+            macro (self: Guard($E, $K), $r: K) => true
             macro (self: $E/FxHandleableVoid, $r: type_expr) => true
             macro (self: $R/FxHandleable, $r: type_expr) => check(typeof self->handle(), r)
             macro (self: r, $r: type_expr) => true
@@ -232,7 +397,7 @@ Fx :: struct {
             }
         }
     }
-    not :: struct {
+    cant :: struct {
         fail :: interface (T: type_expr) {
             t as T
             { check(t) } -> bool
@@ -349,7 +514,7 @@ Fx :: struct {
                 }
             }
         }
-        not :: struct {
+        cant :: struct {
             _2 :: interface (T: type_expr, R1: type_expr, R2: type_expr) {
                 t as T
                 { check(t, typeof R1.empty(), typeof R2.empty(), false) } -> bool
@@ -451,3 +616,11 @@ Fx :: struct {
         }
     }
 }
+
+
+
+
+
+
+
+

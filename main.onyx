@@ -2,6 +2,8 @@ package main
 
 use core {*}
 
+use core { Optional }
+
 #load "module.onyx"
 
 FxError :: enum {
@@ -9,24 +11,29 @@ FxError :: enum {
     GuardTriggered
 }
 
-Console.Print.handler :: (self: Console.Print($K)) -> Result(K, FxError) {
-    if self.p == "foo" do return .{ Err = FxError.PrintFoo }
-    printf("{}!!!!!!\n", self.p)
-    return .{ Ok = self.k() }
+Console.Print.handler :: (self: Console.Print($K)) -> K {
+    printf("{}.\n", self.p)
+    return self.k()
 }
 
+res_fail :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
+res_succeed :: () -> Result(str, FxError) { return .{ Ok = "bruuhhhh" } }
+opt_fail :: () -> Optional(str) { return .{} }
+opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
+
 program :: () => fx!{
+    foot := yield opt_succeed()->guard()
     yield Console.print("init")
     x := yield Console.read()
     w := yield Console.read()
     yield Console.print(w)
-    yield guard(false, FxError.GuardTriggered)
-    return 12
+    toot := yield res_fail()->guard()
+    return str.concat(toot, " pizza")
 }
 
 console_map :: (f: () -> $T/{
-    Fx.returns(i32),
-    Fx.can._2(Console.t, Guard.t),
+    Fx.returns(str),
+    Fx.can._1(Console.t),
     Fx.can.fail
 }) => {
     return f()
@@ -39,7 +46,13 @@ main :: () {
         |> console_map 
         |> run
 
-    println("Done.")
-
     println(result)
 }
+
+
+
+
+
+
+
+

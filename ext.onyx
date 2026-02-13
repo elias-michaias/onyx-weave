@@ -215,6 +215,7 @@ parse_line :: (line: str) -> Parsed_Line {
 }
 
 // Simple lexical analysis: find identifiers in code that match variable names
+// Improved to avoid false positives from substring matches
 find_referenced_vars :: (code: str, defined_vars: [..] str) -> [..] str {
     referenced: [..] str;
     referenced.allocator = context.temp_allocator;
@@ -222,22 +223,109 @@ find_referenced_vars :: (code: str, defined_vars: [..] str) -> [..] str {
     for var in defined_vars {
         if var.count == 0 do continue;
         
-        // Simple check: does the variable name appear in the code?
-        if code->contains(var) {
-            array.push(&referenced, var);
+        // Look for the variable name as a whole word
+        idx := 0;
+        while idx < code.count {
+            found_idx := code[idx .. code.count]->index_of(var);
+            if found_idx == -1 do break;
+            
+            actual_idx := idx + found_idx;
+            
+            // Check if this is a whole word (not part of another identifier)
+            is_whole_word := true;
+            
+            // Check character before
+            if actual_idx > 0 {
+                before := code[actual_idx - 1];
+                if is_identifier_char(before) {
+                    is_whole_word = false;
+                }
+            }
+            
+            // Check character after
+            if actual_idx + var.count < code.count {
+                after := code[actual_idx + var.count];
+                if is_identifier_char(after) {
+                    is_whole_word = false;
+                }
+            }
+            
+            if is_whole_word {
+                // Add to referenced list (avoid duplicates)
+                already_added := false;
+                for ref in referenced {
+                    if ref == var {
+                        already_added = true;
+                        break;
+                    }
+                }
+                if !already_added {
+                    array.push(&referenced, var);
+                }
+                break;
+            }
+            
+            idx = actual_idx + 1;
         }
     }
     
     return referenced;
 }
 
+is_identifier_char :: (c: u8) -> bool {
+    if c >= 'a' && c <= 'z' do return true;
+    if c >= 'A' && c <= 'Z' do return true;
+    if c >= '0' && c <= '9' do return true;
+    if c == '_' do return true;
+    return false;
+}
+
 // Helper to insert continuation into effect call
+// Handles method chains (->) and pipes (|>)
 insert_continuation :: (effect: str, continuation: str) -> str {
     result: dyn_str;
     result.allocator = context.temp_allocator;
     
-    // Find the first opening paren
-    open_paren := effect->index_of('(');
+    // Find the LAST paren set by looking for pipe or method call operators
+    // We want to insert into the final call in a chain like:
+    // some_func()->build(12)->map() should become some_func()->build(12)->map(cont)
+    // another_func() |> foo() should become another_func() |> foo(cont)
+    
+    // Find all positions of -> and |>
+    last_operator_pos := -1;
+    last_operator_len := 0;
+    
+    i := 0;
+    while i < effect.count {
+        // Check for |>
+        if i + 1 < effect.count && effect[i] == '|' && effect[i + 1] == '>' {
+            last_operator_pos = i;
+            last_operator_len = 2;
+            i += 2;
+            continue;
+        }
+        
+        // Check for ->
+        if i + 1 < effect.count && effect[i] == '-' && effect[i + 1] == '>' {
+            last_operator_pos = i;
+            last_operator_len = 2;
+            i += 2;
+            continue;
+        }
+        
+        i += 1;
+    }
+    
+    // Determine which part to search for parens
+    search_start := 0;
+    if last_operator_pos != -1 {
+        search_start = last_operator_pos + last_operator_len;
+    }
+    
+    // Find the first opening paren after the last operator (or from start if no operator)
+    effect_to_search := effect[search_start .. effect.count];
+    open_paren := effect_to_search->index_of('(');
+    
     if open_paren == -1 {
         // No parens? Just append them with continuation
         result->append(effect);
@@ -246,6 +334,9 @@ insert_continuation :: (effect: str, continuation: str) -> str {
         result->append(")");
         return result;
     }
+    
+    // Adjust open_paren to be relative to full effect string
+    open_paren += search_start;
     
     // Find the matching closing paren by counting depth
     paren_depth := 0;
@@ -286,6 +377,11 @@ insert_continuation :: (effect: str, continuation: str) -> str {
     
     result->append(continuation);
     result->append(")");
+    
+    // Add everything after the close paren (if anything)
+    if close_paren + 1 < effect.count {
+        result->append(effect[close_paren + 1 .. effect.count]);
+    }
     
     return result;
 }
