@@ -2,8 +2,6 @@ package main
 
 use core {*}
 
-use core { Optional }
-
 #load "module.onyx"
 
 FxError :: enum {
@@ -22,19 +20,23 @@ opt_fail :: () -> Optional(str) { return .{} }
 opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 
 program :: () => fx!{
-    foot := yield opt_succeed()->guard()
     yield Console.print("init")
+
+
     x := yield Console.read()
     w := yield Console.read()
     yield Console.print(w)
-    toot := yield res_fail()->guard()
-    return str.concat(toot, " pizza")
+
+    r2 := yield Unwrap.suspend(res_fail())
+    msg := str.concat(r2, " pizza")
+    yield Console.print(msg)
+
+    return 19
 }
 
 console_map :: (f: () -> $T/{
-    Fx.returns(str),
-    Fx.can._1(Console.t),
-    Fx.can.fail
+    Fx.returns(i32),
+    Fx.can._2(Console.t, Unwrap.t)
 }) => {
     return f()
 }
@@ -46,7 +48,14 @@ main :: () {
         |> console_map 
         |> run
 
-    println(result)
+    println("DONE! CONTROL FLOW IS RETURNED TO MAIN")
+
+    switch result {
+        case .Err as err {
+            err->resume("pineapple on") |> run |> println
+        }
+        case _ ---
+    }
 }
 
 

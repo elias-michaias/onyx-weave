@@ -32,8 +32,8 @@ FxHasHandler :: interface (T: type_expr) {
     t->handler()
 }
 
-#inject Result {
-    throw :: #match {
+Unwrap :: struct {
+    abort :: #match {
         (self: Result($T, $E), k: (T) -> $K) -> Result(K, E) {
             switch self {
                 case .Ok as ok {
@@ -44,43 +44,6 @@ FxHasHandler :: interface (T: type_expr) {
                 }
             }
         }
-        (self: Result($T, $E), k: () -> $K) -> Result(K, E) {
-            switch self {
-                case .Ok {
-                    return .{ Ok = k() }
-                }
-                case .Err as err {
-                    return .{ Err = err }
-                }
-            }
-        }
-    }
-    guard :: #match {
-        (self: Result($T, $E), k: (T) -> $K) -> Result(K, Resumable(E, T, K)) {
-            switch self {
-                case .Ok as ok {
-                    return .{ Ok = k(ok) }
-                }
-                case .Err as err {
-                    return .{ Err = Resumable(E, T, K).{err, k} }
-                }
-            }
-        }
-        (self: Result($T, $E), k: () -> $K) -> Result(K, ResumableVoid(E, K)) {
-            switch self {
-                case .Ok as ok {
-                    return .{ Ok = k() }
-                }
-                case .Err as err {
-                    return .{ Err = ResumableVoid(E, K).{err, k} }
-                }
-            }
-        }
-    }
-}
-
-#inject Optional {
-    throw :: #match {
         (self: Optional($T), k: (T) -> $K) -> Optional(K) {
             switch self {
                 case .Some as s {
@@ -91,40 +54,64 @@ FxHasHandler :: interface (T: type_expr) {
                 }
             }
         }
-        (self: Optional($T), k: () -> $K) -> Optional(K) {
+    }
+    Suspend :: union (E: type_expr, I: type_expr, K: type_expr) {
+
+        Err: Resumable(E, I, K)    
+        Ok: K
+
+        concretize :: macro ($T: type_expr) => T.{}
+
+        handle :: #match {
+            (self: Unwrap.Suspend($E, $I, $K)) => K.{}
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Unwrap.Suspend.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Unwrap.Suspend(void, void, void).{}
+        }
+    }
+    suspend :: #match {
+        (self: Result($T, $E), k: (T) -> $K) -> Unwrap.Suspend(E, T, K) {
             switch self {
-                case .Some {
-                    return .{ Some = k() }
+                case .Ok as ok {
+                    return .{ Ok = k(ok) }
                 }
-                case .None {
-                    return .{}
+                case .Err as err {
+                    return .{ Err = Resumable(E, T, K).{err, k} }
                 }
             }
         }
-    }
-    guard :: #match {
-        (self: Optional($T), k: (T) -> $K) -> Result(K, Continuation(T, K)) {
+        (self: Optional($T), k: (T) -> $K) -> Unwrap.Suspend(void, T, K) {
             switch self {
                 case .Some as s {
                     return .{ Ok = k(s) }
                 }
                 case .None {
-                    return .{ Err = Continuation(T, K).{k} }
-                }
-            }
-        }
-        (self: Optional($T), k: () -> $K) -> Result(K, ContinuationVoid(K)) {
-            switch self {
-                case .Some as s {
-                    return .{ Ok = k() }
-                }
-                case .None {
-                    return .{ Err = ContinuationVoid(T).{k} }
+                    return .{ Err = Resumable(void, T, K).{void.{}, k} }
                 }
             }
         }
     }
+
+    handle :: #match {
+        (e: Unwrap.Suspend($E, $I, $K)) => e->handle()
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        Unwrap.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => Unwrap.{}
+    }
 }
+
 
 run :: #match {
     macro (e: Result($T/FxHandleable, $E)) -> Result(typeof T.{} |> .handle |> run, E) {
@@ -137,6 +124,13 @@ run :: #match {
         case .Some as some => run(some->handle())
         case .None => .{}
     }
+    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle |> run) {
+        switch e {
+            case .Ok as ok do return .{ Ok = run(ok->handle()) }
+            case .Err as err do return .{ Err = err }
+        }
+    }
+    macro (e: Unwrap.Suspend($E, $T, $K)) => e
     macro (e: $E/FxHandleableVoid) => {
         e->handle()
     }
@@ -171,45 +165,6 @@ ContinuationVoid :: struct (K: type_expr) {
     k: () -> K
 
     resume :: macro (self: ContinuationVoid($K)) => self.k()
-}
-
-Guard :: union (E: type_expr, I: type_expr, K: type_expr) {
-
-    Ok: (I) -> K
-    Err: Resumable(E, I, K)    
-
-    concretize :: macro ($T: type_expr) => T.{}
-
-    err :: (err: $E, k: ($I) -> $T) -> Guard(E, I, T) {
-        return Guard(E, I, T).{ Err = .{err, k} }
-    }
-
-    ok :: (err: $E, k: ($I) -> $T) -> Guard(E, T) {
-        return Guard(E, I, T).{ Ok = k }
-    }
-
-    handle :: #match {
-        (self: Guard($E, $I, $K)) => K.{}
-        (self: Guard($E, $I, $K), input: $I) -> Guard(E, I, typeof run(K.{})) {
-            switch self {
-                case .Ok as ok {
-                    return .{ Ok = run(ok(input)) }
-                }
-                case .Err as err {
-                    return self
-                }
-            }
-        }
-    }
-
-    handleable :: interface (T: type_expr) {
-        t as T
-        Guard.handle(t)
-    }
-
-    t :: struct {
-        empty :: macro () => Guard(void, void, void).{}
-    }
 }
 
 GuardVoid :: union (E: type_expr, K: type_expr) {
@@ -248,11 +203,6 @@ GuardVoid :: union (E: type_expr, K: type_expr) {
     t :: struct {
         empty :: macro () => GuardVoid(void, void).{}
     }
-}
-
-guard :: (cond: bool, err: $E, k: () -> $T) -> Guard(E, T) {
-    if cond do return Guard(E, T).{ Err = .{err, k} }
-    return Guard(E, T).{ Ok = k }
 }
 
 Console :: struct {

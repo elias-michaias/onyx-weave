@@ -3,15 +3,16 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:24:20
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:22:20
 do do {
-    return opt_succeed()->guard((foot) => {
-        return Console.print("init", () => {
+    return Console.print("init", () => {
         return Console.read((x) => {
         return Console.read((w) => {
         return Console.print(w, () => {
-        return res_fail()->guard((toot) => {
-        return str.concat(toot, " pizza")
+        return Unwrap.suspend(res_fail(), (r2) => {
+        msg := str.concat(r2, " pizza")
+        return Console.print(msg, () => {
+        return 19
     })
     })
     })
