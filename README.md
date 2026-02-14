@@ -79,9 +79,9 @@ main :: () {
 
     switch result {
         case .Err as err {
-            // any type without a .handle function = 
+            // pass void OR pass no type = 
             // use nearest handle definition
-            err->resume("pineapple on") |> run(void) |> println
+            err->resume("pineapple on") |> run |> println
         }
         case _ ---
     }
