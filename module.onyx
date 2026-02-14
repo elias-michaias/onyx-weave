@@ -32,6 +32,11 @@ FxHasHandler :: interface (T: type_expr) {
     t->handler()
 }
 
+FxScopedHandler :: interface (T: type_expr) {
+    t as T
+    handle(t)
+}
+
 Unwrap :: struct {
     abort :: #match {
         (self: Result($T, $E), k: (T) -> $K) -> Result(K, E) {
@@ -131,6 +136,11 @@ run :: #match {
         }
     }
     macro (e: Unwrap.Suspend($E, $T, $K)) => e
+    macro (e: $E/{FxHandleableVoid, FxScopedHandler}) => handle(e)
+    macro (e: $E/{FxHandleable, FxScopedHandler}) => {
+        output := handle(e)
+        return run(output)
+    }
     macro (e: $E/FxHandleableVoid) => {
         e->handle()
     }
@@ -567,7 +577,9 @@ Fx :: struct {
     }
 }
 
-
+handle :: #match {
+    (self: $T/FxHandleable) => self->handle()
+}
 
 
 

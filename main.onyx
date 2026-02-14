@@ -9,11 +9,6 @@ FxError :: enum {
     GuardTriggered
 }
 
-Console.Print.handler :: (self: Console.Print($K)) -> K {
-    printf("{}.\n", self.p)
-    return self.k()
-}
-
 res_fail :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
 res_succeed :: () -> Result(str, FxError) { return .{ Ok = "bruuhhhh" } }
 opt_fail :: () -> Optional(str) { return .{} }
@@ -41,16 +36,35 @@ console_map :: (f: () -> $T/{
     return f()
 }
 
+
 main :: () {
     println(typeof program)
 
-    result := program
-        |> console_map 
-        |> run
+    handle :: #match {
+        (self: Console.Print($K)) => {
+            printf("{}!\n", self.p)
+            return self.k()
+        }
+        (self: $T/FxHandleable) => self->handle()
+    }
+
+    result := () => {
+        handle :: #match {
+            (self: Console.Print($K)) => {
+                printf("{}?\n", self.p)
+                return self.k()
+            }
+            (self: $T/FxHandleable) => self->handle()
+        }
+
+        return program
+            |> console_map 
+            |> run
+    } 
 
     println("DONE! CONTROL FLOW IS RETURNED TO MAIN")
 
-    switch result {
+    switch result() {
         case .Err as err {
             err->resume("pineapple on") |> run |> println
         }
