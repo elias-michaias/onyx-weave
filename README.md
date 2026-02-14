@@ -49,7 +49,6 @@ console_map :: (f: () -> $T/{
     return f()
 }
 
-
 main :: () {
     println(typeof program)
 
@@ -61,51 +60,42 @@ main :: () {
         (self: $T/FxHandleable) => self->handle()
     }
 
-    result := () => {
-        handle :: #match {
-            (self: Console.Print($K)) => {
-                printf("{}?\n", self.p)
-                return self.k()
-            }
-            (self: $T/FxHandleable) => self->handle()
-        }
-
-        return program
+    result := program
             |> console_map 
-            |> run
-    } 
+            // pass an anonymous type with handle function
+            // or pass an actual defined type for reuse 
+            // like `MyHandler`
+            |> run(struct {
+                handle :: #match {
+                    (self: Console.Print($K)) => {
+                        printf("{}???\n", self.p)
+                        return self.k()
+                    }
+                    (self: $T/FxHandleable) => self->handle()
+                }
+            })
 
-    println("DONE! CONTROL FLOW IS RETURNED TO MAIN")
+    println("CONTROL FLOW IS RETURNED TO MAIN.")
 
-    switch result() {
+    switch result {
         case .Err as err {
-            err->resume("pineapple on") |> run |> println
+            // any type without a .handle function = 
+            // use nearest handle definition
+            err->resume("pineapple on") |> run(void) |> println
         }
         case _ ---
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 
 Outputs:
 ```
 () -> Console.Print(Console.Read(Console.Read(Console.Print(Unwrap.Suspend(FxError, [] u8, Console.Print(i32))))))
-DONE! CONTROL FLOW IS RETURNED TO MAIN
-init?
-foo
+init???
+foo  
 bar
-bar?
+bar???
+CONTROL FLOW IS RETURNED TO MAIN.
 pineapple on pizza!
 19
 ```
