@@ -3,7 +3,7 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:22:20
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:17:20
 do do {
     return Console.print("init", () => {
         return Console.read((x) => {
