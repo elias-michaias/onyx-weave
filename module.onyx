@@ -119,36 +119,34 @@ Unwrap :: struct {
 
 
 run :: #match {
-    macro (e: Result($T/FxHandleable, $E)) -> Result(typeof T.{} |> .handle |> run, E) {
+    macro (e: Result($T/FxHandleable, $E), body: $Code) -> Result(typeof T.{} |> .handle |> run(body), E) {
+        #unquote body
         switch e {
-            case .Ok as ok do return .{ Ok = run(ok->handle()) }
+            case .Ok as ok do return .{ Ok = run(ok->handle(), body) }
             case .Err as err do return .{ Err = err }
         }
     }
-    macro (e: Optional($T/FxHandleable)) => switch e {
-        case .Some as some => run(some->handle())
+    macro (e: Optional($T/FxHandleable), body: $Code) => switch e {
+        case .Some as some => run(some->handle(), body)
         case .None => .{}
     }
-    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle |> run) {
+    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable), body: $Code) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle |> run(body)) {
         switch e {
-            case .Ok as ok do return .{ Ok = run(ok->handle()) }
+            case .Ok as ok do return .{ Ok = run(ok->handle(), body) }
             case .Err as err do return .{ Err = err }
         }
     }
-    macro (e: Unwrap.Suspend($E, $T, $K)) => e
-    macro (e: $E/{FxHandleableVoid, FxScopedHandler}) => handle(e)
-    macro (e: $E/{FxHandleable, FxScopedHandler}) => {
+    macro (e: Unwrap.Suspend($E, $T, $K), body: $Code) => e
+    macro (e: $E/FxHandleableVoid, body: $Code) => {
+        #unquote body
+        handle(e)
+    }
+    macro (e: $E/FxHandleable, body: $Code) => {
+        #unquote body
         output := handle(e)
-        return run(output)
+        return run(output, body)
     }
-    macro (e: $E/FxHandleableVoid) => {
-        e->handle()
-    }
-    macro (e: $E/FxHandleable) => {
-        output := e->handle()
-        return run(output)
-    }
-    macro (e: $E) => e
+    macro (e: $E, body: $Code) => e
 }
 
 Resumable :: struct (E: type_expr, I: type_expr, K: type_expr) {

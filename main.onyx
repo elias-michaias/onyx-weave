@@ -49,24 +49,25 @@ main :: () {
     }
 
     result := () => {
-        handle :: #match {
-            (self: Console.Print($K)) => {
-                printf("{}?\n", self.p)
-                return self.k()
-            }
-            (self: $T/FxHandleable) => self->handle()
-        }
 
         return program
             |> console_map 
-            |> run
+            |> run([] {
+                handle :: #match {
+                    (self: Console.Print($K)) => {
+                        printf("{}?\n", self.p)
+                        return self.k()
+                    }
+                    (self: $T/FxHandleable) => self->handle()
+                }
+            })
     } 
 
     println("DONE! CONTROL FLOW IS RETURNED TO MAIN")
 
     switch result() {
         case .Err as err {
-            err->resume("pineapple on") |> run |> println
+            err->resume("pineapple on") |> run([]{}) |> println
         }
         case _ ---
     }
