@@ -16,9 +16,9 @@ main :: () {
 // Represents a parsed line from the fx! block
 Line_Type :: enum {
     Unknown;
-    Type_Inferred_Yield;    // x := yield Effect()
-    Type_Specified_Yield;   // x: Type = yield Effect()
-    Non_Binding_Yield;      // yield Effect()
+    Type_Inferred_Perform;    // x := perform Effect()
+    Type_Specified_Perform;   // x: Type = perform Effect()
+    Non_Binding_Perform;      // perform Effect()
     Return_Statement;       // return value
     Regular;                // any other statement
 }
@@ -26,7 +26,7 @@ Line_Type :: enum {
 Parsed_Line :: struct {
     type: Line_Type;
     
-    // For yields
+    // For performs
     var_name: str;
     var_type: str;  // empty if type-inferred
     effect: str;
@@ -37,7 +37,7 @@ Parsed_Line :: struct {
     // Original line
     original: str;
     
-    // Variables defined in this line (for regular statements and typed yields)
+    // Variables defined in this line (for regular statements and typed performs)
     defines_var: str;
 }
 
@@ -155,58 +155,58 @@ parse_line :: (line: str) -> Parsed_Line {
         return result;
     }
     
-    // Check for yield
-    if !line->contains("yield") {
+    // Check for perform
+    if !line->contains("perform") {
         result.type = .Regular;
         result.defines_var = extract_defined_var(line);
         return result;
     }
     
-    // Parse yield patterns
-    yield_index := line->index_of("yield");
-    if yield_index == -1 {
+    // Parse perform patterns
+    perform_index := line->index_of("perform");
+    if perform_index == -1 {
         result.type = .Regular;
         result.defines_var = extract_defined_var(line);
         return result;
     }
     
-    before_yield := line[0 .. yield_index];
-    before_yield->strip_whitespace();
+    before_perform := line[0 .. perform_index];
+    before_perform->strip_whitespace();
     
-    after_yield := line[yield_index + 5 .. line.count];
-    after_yield->strip_whitespace();
+    after_perform := line[perform_index + 7 .. line.count];
+    after_perform->strip_whitespace();
     
-    result.effect = after_yield;
+    result.effect = after_perform;
     
-    // Non-binding yield (no assignment before yield)
-    if before_yield.count == 0 {
-        result.type = .Non_Binding_Yield;
+    // Non-binding perform (no assignment before perform)
+    if before_perform.count == 0 {
+        result.type = .Non_Binding_Perform;
         return result;
     }
     
     // Check for type-inferred binding: "x :="
-    colon_eq_index := before_yield->index_of(":=");
+    colon_eq_index := before_perform->index_of(":=");
     if colon_eq_index != -1 {
-        result.var_name = before_yield[0 .. colon_eq_index];
+        result.var_name = before_perform[0 .. colon_eq_index];
         result.var_name->strip_whitespace();
         result.defines_var = result.var_name;
-        result.type = .Type_Inferred_Yield;
+        result.type = .Type_Inferred_Perform;
         return result;
     }
     
     // Check for type-specified binding: "x: Type ="
-    colon_index := before_yield->index_of(':');
-    equals_index := before_yield->last_index_of('=');
+    colon_index := before_perform->index_of(':');
+    equals_index := before_perform->last_index_of('=');
     
     if colon_index != -1 && equals_index != -1 {
-        result.var_name = before_yield[0 .. colon_index];
+        result.var_name = before_perform[0 .. colon_index];
         result.var_name->strip_whitespace();
         
-        result.var_type = before_yield[colon_index + 1 .. equals_index];
+        result.var_type = before_perform[colon_index + 1 .. equals_index];
         result.var_type->strip_whitespace();
         
         result.defines_var = result.var_name;
-        result.type = .Type_Specified_Yield;
+        result.type = .Type_Specified_Perform;
         return result;
     }
     
@@ -405,8 +405,8 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         code->append("return ");
         code->append(last.return_value);
         start_index = cast(i32) lines.count - 2;
-    } elseif last.type == .Type_Inferred_Yield || last.type == .Type_Specified_Yield || last.type == .Non_Binding_Yield {
-        // Last line is a yield - it needs an empty continuation
+    } elseif last.type == .Type_Inferred_Perform || last.type == .Type_Specified_Perform || last.type == .Non_Binding_Perform {
+        // Last line is a perform - it needs an empty continuation
         start_index = cast(i32) lines.count - 1;
     } else {
         // Last line is a regular statement - just return it
@@ -415,7 +415,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         start_index = cast(i32) lines.count - 2;
     }
     
-    // Track variables that need to be captured at each yield
+    // Track variables that need to be captured at each perform
     captures_needed: [..] [..] str;
     captures_needed.allocator = context.temp_allocator;
     
@@ -426,8 +426,8 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         array.push(&captures_needed, empty_list);
     }
     
-    // Build list of variables defined before each yield
-    // These are variables that CAN be captured at that yield
+    // Build list of variables defined before each perform
+    // These are variables that CAN be captured at that perform
     vars_defined_before: [..] [..] str;
     vars_defined_before.allocator = context.temp_allocator;
     
@@ -451,32 +451,32 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         }
     }
     
-    // Now determine captures: work backwards through yields
-    // For each yield, check what variables from BEFORE it are referenced AFTER the next yield
+    // Now determine captures: work backwards through performs
+    // For each perform, check what variables from BEFORE it are referenced AFTER the next perform
     i := cast(i32) lines.count - 1;
     while i >= 0 {
         defer i -= 1;
         
         line := lines[i];
         
-        if line.type == .Type_Inferred_Yield || line.type == .Type_Specified_Yield || line.type == .Non_Binding_Yield {
-            // Find the next yield after this one
-            next_yield_idx := -1;
+        if line.type == .Type_Inferred_Perform || line.type == .Type_Specified_Perform || line.type == .Non_Binding_Perform {
+            // Find the next perform after this one
+            next_perform_idx := -1;
             for j in (i + 1) .. lines.count {
-                if lines[j].type == .Type_Inferred_Yield || lines[j].type == .Type_Specified_Yield || lines[j].type == .Non_Binding_Yield {
-                    next_yield_idx = j;
+                if lines[j].type == .Type_Inferred_Perform || lines[j].type == .Type_Specified_Perform || lines[j].type == .Non_Binding_Perform {
+                    next_perform_idx = j;
                     break;
                 }
             }
             
             // Build the code snippet that will be in the inner continuation
-            // (everything after the next yield, or after the last regular statement if no more yields)
+            // (everything after the next perform, or after the last regular statement if no more performs)
             inner_code: dyn_str;
             inner_code.allocator = context.temp_allocator;
             
             start_checking: i32;
-            if next_yield_idx != -1 {
-                start_checking = next_yield_idx + 1;
+            if next_perform_idx != -1 {
+                start_checking = next_perform_idx + 1;
             } else {
                 start_checking = i + 1;
             }
@@ -486,7 +486,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 inner_code->append(" ");
             }
             
-            // Find which variables from before this yield are referenced in the inner code
+            // Find which variables from before this perform are referenced in the inner code
             vars_before := vars_defined_before[i];
             referenced := find_referenced_vars(inner_code, vars_before);
             
@@ -494,12 +494,12 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 array.push(&captures_needed[i], ref_var);
             }
             
-            // Also propagate captures from the next yield if there is one
-            // If the next yield captures something from before this yield, we need to capture it too
-            if next_yield_idx != -1 {
-                next_captures := captures_needed[next_yield_idx];
+            // Also propagate captures from the next perform if there is one
+            // If the next perform captures something from before this perform, we need to capture it too
+            if next_perform_idx != -1 {
+                next_captures := captures_needed[next_perform_idx];
                 for captured_var in next_captures {
-                    // Check if this variable was defined before this yield
+                    // Check if this variable was defined before this perform
                     var_is_from_before := false;
                     for v in vars_before {
                         if v == captured_var {
@@ -508,7 +508,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                         }
                     }
                     
-                    // If it's from before this yield, we need to capture it too
+                    // If it's from before this perform, we need to capture it too
                     if var_is_from_before {
                         // Check if we're not already capturing it
                         already_captured := false;
@@ -534,21 +534,21 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     if last.type == .Return_Statement {
         code->append("return ");
         code->append(last.return_value);
-    } elseif last.type == .Type_Inferred_Yield || last.type == .Type_Specified_Yield || last.type == .Non_Binding_Yield {
+    } elseif last.type == .Type_Inferred_Perform || last.type == .Type_Specified_Perform || last.type == .Non_Binding_Perform {
         // Will be handled in the loop
     } else {
         code->append("return ");
         code->append(last.original);
     }
     
-    // Work backwards through yields, wrapping each in a continuation
+    // Work backwards through performs, wrapping each in a continuation
     i = start_index;
     while i >= 0 {
         defer i -= 1;
         
         line := lines[i];
         
-        // Get the captures for this yield
+        // Get the captures for this perform
         captures := captures_needed[i];
         
         // Build use clause if we have captures
@@ -568,7 +568,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         }
         
         switch line.type {
-            case .Type_Inferred_Yield {
+            case .Type_Inferred_Perform {
                 // Build continuation
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
@@ -578,7 +578,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 continuation->append(use_clause);
                 continuation->append(" => {\n        ");
                 
-                // If this is the last yield and there's no code yet, add empty body
+                // If this is the last perform and there's no code yet, add empty body
                 if code.count == 0 {
                     continuation->append("return");
                 } else {
@@ -596,7 +596,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 code = wrapped;
             }
             
-            case .Type_Specified_Yield {
+            case .Type_Specified_Perform {
                 // Build continuation with typed parameter
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
@@ -608,7 +608,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 continuation->append(use_clause);
                 continuation->append(" => {\n        ");
                 
-                // If this is the last yield and there's no code yet, add empty body
+                // If this is the last perform and there's no code yet, add empty body
                 if code.count == 0 {
                     continuation->append("return");
                 } else {
@@ -626,7 +626,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 code = wrapped;
             }
             
-            case .Non_Binding_Yield {
+            case .Non_Binding_Perform {
                 // Build continuation with no parameters
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
@@ -634,7 +634,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 continuation->append(use_clause);
                 continuation->append(" => {\n        ");
                 
-                // If this is the last yield and there's no code yet, add empty body
+                // If this is the last perform and there's no code yet, add empty body
                 if code.count == 0 {
                     continuation->append("return");
                 } else {

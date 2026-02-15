@@ -15,14 +15,14 @@ opt_fail :: () -> Optional(str) { return .{} }
 opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 
 program :: () => fx!{
-    yield Console.print("init")
+    perform Console.print("init")
 
-    r2 := yield Unwrap.suspend(res_fail())
+    r2 := perform Unwrap.suspend(res_fail())
     msg := str.concat(r2, " pizza")
-    yield Console.print(msg)
+    perform Console.print(msg)
 
-    w := yield Console.read()
-    yield Console.print(w)
+    w := perform Console.read()
+    perform Console.print(w)
 
     return 12
 }
@@ -56,7 +56,7 @@ main :: () {
                         // no type specified for run ==
                         // bubbles up to this handler; recursion-safe
                         case .Ok as ok => handle(ok) |> run
-                        case .Err as err => err->resume("foobar") |> handle |> run 
+                        case .Err as err => err->resume("foobar") |> run 
                     }
                     // this is busted, I can specialize on any type parameter of any effect
                     // including using type predicates to check if the continuation
