@@ -17,16 +17,14 @@ opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 program :: () => fx!{
     yield Console.print("init")
 
-
-    x := yield Console.read()
-    w := yield Console.read()
-    yield Console.print(w)
-
     r2 := yield Unwrap.suspend(res_fail())
     msg := str.concat(r2, " pizza")
     yield Console.print(msg)
 
-    return 19
+    w := yield Console.read()
+    yield Console.print(w)
+
+    return 12
 }
 
 console_map :: (f: () -> $T/{
@@ -39,14 +37,6 @@ console_map :: (f: () -> $T/{
 main :: () {
     println(typeof program)
 
-    handle :: #match {
-        (self: Console.Print($K)) => {
-            printf("{}!\n", self.p)
-            return self.k()
-        }
-        (self: $T/FxHandleable) => self->handle()
-    }
-
     result := program
             |> console_map 
             // pass an anonymous type with handle function
@@ -54,24 +44,28 @@ main :: () {
             // like `MyHandler`
             |> run(struct {
                 handle :: #match {
-                    (self: Console.Print($K)) => {
-                        printf("{}???\n", self.p)
-                        return self.k()
+                    // ask, don't state
+                    (e: Console.Print($K)) => {
+                        printf("{}???\n", e.p)
+                        return e.k()
                     }
-                    (self: $T/FxHandleable) => self->handle()
+                    // override default short-circuit for Unwrap.Suspend
+                    // if fail, resume with default value
+                    // applies to all where T == str
+                    (e: Unwrap.Suspend($E, str, $K)) => switch e {
+                        // no type specified for run ==
+                        // bubbles up to this handler; recursion-safe
+                        case .Ok as ok => handle(ok) |> run
+                        case .Err as err => err->resume("foobar") |> run 
+                    }
+                    e => e->handle()
                 }
             })
 
     println("CONTROL FLOW IS RETURNED TO MAIN.")
 
-    switch result {
-        case .Err as err {
-            // pass void OR pass no type = 
-            // use nearest handle definition
-            err->resume("pineapple on") |> run |> println
-        }
-        case _ ---
-    }
+    println(result)
+
 }
 
 

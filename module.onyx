@@ -26,12 +26,6 @@ FxHandleableAs :: interface (T: type_expr, R: type_expr) {
     { t->handle() } -> R
 }
 
-
-FxHasHandler :: interface (T: type_expr) {
-    t as T
-    t->handler()
-}
-
 FxScopedHandler :: interface (T: type_expr) {
     t as T
     handle(t)
@@ -68,6 +62,12 @@ Unwrap :: struct {
         concretize :: macro ($T: type_expr) => T.{}
 
         handle :: #match {
+            (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle) {
+                switch e {
+                    case .Ok as ok do return .{ Ok = ok->handle() }
+                    case .Err as err do return .{ Err = err }
+                }
+            }
             (self: Unwrap.Suspend($E, $I, $K)) => K.{}
         }
 
@@ -129,10 +129,13 @@ run :: #match {
         case .Some as some => run(some->handle(), Handle)
         case .None => .{}
     }
-    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable), $Handle: type_expr) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle |> run(Handle)) {
-        switch e {
-            case .Ok as ok do return .{ Ok = run(ok->handle(), Handle) }
-            case .Err as err do return .{ Err = err }
+    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable), $Handle: type_expr) => {
+        #if Handle != void {
+            output := Handle.handle(e)
+            return run(output, Handle)
+        } else {
+            output := handle(e)
+            return run(output, Handle)
         }
     }
     macro (e: Unwrap.Suspend($E, $T, $K), $Handle: type_expr) => e
@@ -224,16 +227,11 @@ Console :: struct {
     Read :: struct (K: type_expr) {
         k: (str) -> K
 
-        handle :: #match {
-            (self: Read($K)) -> #auto where FxHasHandler(Read(K)) {
-                return Console.Read.handler(self)
-            }
-            (self: Read($K)) -> K {
-                stdin_reader := Reader.make(&stdio.stream)
-                defer Reader.free(&stdin_reader)
-                line := stdin_reader |> .read_line |> .strip_whitespace
-                return self.k(line)
-            }
+        handle :: (self: Read($K)) -> K {
+            stdin_reader := Reader.make(&stdio.stream)
+            defer Reader.free(&stdin_reader)
+            line := stdin_reader |> .read_line |> .strip_whitespace
+            return self.k(line)
         }
 
         handleable :: interface (T: type_expr) {
@@ -251,14 +249,9 @@ Console :: struct {
         p: str
         k: () -> K
         
-        handle :: #match {
-            (self: Print($K)) -> #auto where FxHasHandler(Print(K)) {
-                return Console.Print.handler(self)
-            }
-            (self: Print($K)) -> K {
-                printf("{}", self.p)
-                return self.k()
-            }
+        handle :: (self: Print($K)) -> K {
+            printf("{}", self.p)
+            return self.k()
         }
 
         handleable :: interface (T: type_expr) {
@@ -296,9 +289,7 @@ Fx :: struct {
             macro (self: type_expr, $r: type_expr) => check(self.{}, r)
             macro (self: Optional($T), $r: type_expr) => check(T.{}, r)
             macro (self: Result($T, $E), $r: type_expr) => check(T.{}, r)
-            macro (self: Guard($E, $K/FxHandleable), $r: type_expr) => check(typeof K.handle(K.{}), r)
-            macro (self: Guard($E, $K), $r: K) => true
-            macro (self: $E/FxHandleableVoid, $r: type_expr) => true
+            macro (self: $E/FxHandleableVoid, $r: type_expr) -> bool where r == void { return true }
             macro (self: $R/FxHandleable, $r: type_expr) => check(typeof self->handle(), r)
             macro (self: r, $r: type_expr) => true
             macro (self: $R, $r: type_expr) => {}
