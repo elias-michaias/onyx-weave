@@ -61,6 +61,13 @@ Unwrap :: struct {
 
         concretize :: macro ($T: type_expr) => T.{}
 
+        unwrap :: macro (e: Unwrap.Suspend($E, $K, $T)) => {
+            switch e {
+                case .Ok as ok do return ok
+                case .Err do panic("Unwrapped error type")
+            }
+        }
+
         handle :: #match {
             (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle) {
                 switch e {
@@ -571,10 +578,6 @@ Fx :: struct {
             }
         }
     }
-}
-
-handle :: #match {
-    (self: $T/FxHandleable) => self->handle()
 }
 
 
