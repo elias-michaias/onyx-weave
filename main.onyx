@@ -3,6 +3,7 @@ package main
 use core {*}
 
 #load "module.onyx"
+#load "async.onyx"
 
 FxError :: enum {
     PrintFoo
@@ -17,8 +18,12 @@ opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 program :: () => fx!{
     perform Console.print("init")
 
-    r2 := perform Unwrap.suspend(res_fail())
+    r2 := perform Value.suspend("mushroom")
     msg := str.concat(r2, " pizza")
+    perform Console.print(msg)
+
+    r3 := perform Value.suspend("mushroom")
+    msg := str.concat(r3, " tacos")
     perform Console.print(msg)
 
     w := perform Console.read()
@@ -29,7 +34,7 @@ program :: () => fx!{
 
 console_map :: (f: () -> $T/{
     Fx.returns(i32),
-    Fx.can._2(Console.t, Unwrap.t)
+    Fx.can._2(Console.t, Value.t)
 }) => {
     return f()
 }
@@ -58,6 +63,7 @@ main :: () {
                         case .Ok as ok => handle(ok) |> run
                         case .Err as err => err->resume("foobar") |> run 
                     }
+                    (e: Value.Suspend(str, $K)) => e.k("toad")
                     // this is busted, I can specialize on any type parameter of any effect
                     // including using type predicates to check if the continuation
                     // is also effectful or ends in a certain primitive type

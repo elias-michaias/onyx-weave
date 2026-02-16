@@ -124,17 +124,66 @@ Unwrap :: struct {
     }
 }
 
+Value :: struct {
+
+    Suspend :: struct (T: type_expr, K: type_expr) {
+        p: T
+        k: (T) -> K
+
+        handle :: (e: Value.Suspend($T, $K)) => e.k(e.p)
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Value.Suspend.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Value.Suspend(void, void).{}
+        }
+    }
+
+    suspend :: (value: $T, continuation: (T) -> $K) => {
+        return Value.Suspend(T, K).{value,continuation}
+    }
+    
+    handle :: #match {
+        (e: Value.Suspend($T, $K)) => e->handle()
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        Value.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => Value.{}
+    }
+
+}
+
 
 run :: #match {
     macro (e: Result($T/FxHandleable, $E), $Handle: type_expr) -> Result(typeof T.{} |> .handle |> run(Handle), E) {
-        switch e {
-            case .Ok as ok do return .{ Ok = run(ok->handle(), Handle) }
-            case .Err as err do return .{ Err = err }
+        #if Handle != void {
+            switch e {
+                case .Ok as ok do return .{ Ok = run(handle(ok), Handle) }
+                case .Err as err do return .{ Err = err }
+            }
+        } else {
+            switch e {
+                case .Ok as ok do return .{ Ok = run(ok->handle(), Handle) }
+                case .Err as err do return .{ Err = err }
+            }
         }
     }
     macro (e: Optional($T/FxHandleable), $Handle: type_expr) => switch e {
-        case .Some as some => run(some->handle(), Handle)
-        case .None => .{}
+        #if Handle != void {
+            case .Some as some => run(handle(some), Handle)
+            case .None => .{}
+        } else {
+            case .Some as some => run(some->handle(), Handle)
+            case .None => .{}
+        }
     }
     macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable), $Handle: type_expr) => {
         #if Handle != void {
@@ -580,8 +629,6 @@ Fx :: struct {
     }
 }
 
-
-
-
-
-
+handle :: #match {
+    e => e->handle()
+}

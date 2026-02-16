@@ -28,16 +28,16 @@ opt_fail :: () -> Optional(str) { return .{} }
 opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 
 program :: () => fx!{
-    yield Console.print("init")
+    perform Console.print("init")
 
 
-    x := yield Console.read()
-    w := yield Console.read()
-    yield Console.print(w)
+    x := perform Console.read()
+    w := perform Console.read()
+    perform Console.print(w)
 
-    r2 := yield Unwrap.suspend(res_fail())
+    r2 := perform Unwrap.suspend(res_fail())
     msg := str.concat(r2, " pizza")
-    yield Console.print(msg)
+    perform Console.print(msg)
 
     return 19
 }

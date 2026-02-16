@@ -6,12 +6,17 @@
 // Generated from /home/elias/Projects/onyx-playground/main.onyx:17:20
 do do {
     return Console.print("init", () => {
-        return Unwrap.suspend(res_fail(), (r2) => {
+        return Task.suspend("mushroom", (r2) => {
         msg := str.concat(r2, " pizza")
+        return Console.print(msg, () use (msg) => {
+        return Task.suspend("mushroom", (r3) => {
+        msg := str.concat(r3, " tacos")
         return Console.print(msg, () => {
         return Console.read((w) => {
         return Console.print(w, () => {
         return 12
+    })
+    })
     })
     })
     })
