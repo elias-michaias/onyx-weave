@@ -1,9 +1,9 @@
 package main
 
 use core {*}
+use weave {*}
 
-#load "module.onyx"
-#load "async.onyx"
+#load "src/module.onyx"
 
 FxError :: enum {
     PrintFoo
@@ -29,13 +29,12 @@ program :: () => fx!{
     w := perform Console.read()
     perform Console.print(w)
 
-    return 12
+    z := perform Search.choose(.[1, 2, 3, 4])
+
+    return z
 }
 
-console_map :: (f: () -> $T/{
-    Fx.returns(i32),
-    Fx.can._2(Console.t, Value.t)
-}) => {
+console_map :: (f: () -> $T) => {
     return f()
 }
 
@@ -49,25 +48,15 @@ main :: () {
             // like `MyHandler`
             |> run(struct {
                 handle :: #match {
-                    // ask, don't state
                     (e: Console.Print($K)) => {
                         printf("{}???\n", e.p)
                         return e.k()
                     }
-                    // override default short-circuit for Unwrap.Suspend
-                    // if fail, resume with default value
-                    // applies to all where T == str
                     (e: Unwrap.Suspend($E, str, $K)) => switch e {
-                        // no type specified for run ==
-                        // bubbles up to this handler; recursion-safe
                         case .Ok as ok => handle(ok) |> run
                         case .Err as err => err->resume("foobar") |> run 
                     }
                     (e: Value.Suspend(str, $K)) => e.k("toad")
-                    // this is busted, I can specialize on any type parameter of any effect
-                    // including using type predicates to check if the continuation
-                    // is also effectful or ends in a certain primitive type
-                    // this is freaking insane bro
                     e => e->handle()
                 }
             })

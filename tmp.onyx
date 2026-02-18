@@ -3,18 +3,20 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:17:20
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:18:20
 do do {
     return Console.print("init", () => {
-        return Task.suspend("mushroom", (r2) => {
+        return Value.suspend("mushroom", (r2) => {
         msg := str.concat(r2, " pizza")
         return Console.print(msg, () use (msg) => {
-        return Task.suspend("mushroom", (r3) => {
+        return Value.suspend("mushroom", (r3) use (msg) => {
         msg := str.concat(r3, " tacos")
         return Console.print(msg, () => {
         return Console.read((w) => {
         return Console.print(w, () => {
-        return 12
+        return Search.choose(.[1, 2, 3, 4], (z) => {
+        return z
+    })
     })
     })
     })

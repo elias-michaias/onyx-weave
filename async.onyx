@@ -1,8 +1,0 @@
-package main
-
-#load "module.onyx"
-
-use core {*}
-
-Future :: struct (T: type_expr) {
-}

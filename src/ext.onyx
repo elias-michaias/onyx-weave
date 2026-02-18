@@ -452,7 +452,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     }
     
     // Now determine captures: work backwards through performs
-    // For each perform, check what variables from BEFORE it are referenced AFTER the next perform
+    // For each perform, check what variables from BEFORE it are referenced in the continuation
     i := cast(i32) lines.count - 1;
     while i >= 0 {
         defer i -= 1;
@@ -460,33 +460,17 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         line := lines[i];
         
         if line.type == .Type_Inferred_Perform || line.type == .Type_Specified_Perform || line.type == .Non_Binding_Perform {
-            // Find the next perform after this one
-            next_perform_idx := -1;
-            for j in (i + 1) .. lines.count {
-                if lines[j].type == .Type_Inferred_Perform || lines[j].type == .Type_Specified_Perform || lines[j].type == .Non_Binding_Perform {
-                    next_perform_idx = j;
-                    break;
-                }
-            }
-            
-            // Build the code snippet that will be in the inner continuation
-            // (everything after the next perform, or after the last regular statement if no more performs)
+            // Build ALL code that will be in this perform's continuation
+            // This includes everything after this perform
             inner_code: dyn_str;
             inner_code.allocator = context.temp_allocator;
             
-            start_checking: i32;
-            if next_perform_idx != -1 {
-                start_checking = next_perform_idx + 1;
-            } else {
-                start_checking = i + 1;
-            }
-            
-            for j in start_checking .. lines.count {
+            for j in (i + 1) .. lines.count {
                 inner_code->append(lines[j].original);
                 inner_code->append(" ");
             }
             
-            // Find which variables from before this perform are referenced in the inner code
+            // Find which variables from before this perform are referenced in ALL remaining code
             vars_before := vars_defined_before[i];
             referenced := find_referenced_vars(inner_code, vars_before);
             
@@ -494,33 +478,38 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 array.push(&captures_needed[i], ref_var);
             }
             
-            // Also propagate captures from the next perform if there is one
-            // If the next perform captures something from before this perform, we need to capture it too
-            if next_perform_idx != -1 {
-                next_captures := captures_needed[next_perform_idx];
-                for captured_var in next_captures {
-                    // Check if this variable was defined before this perform
-                    var_is_from_before := false;
-                    for v in vars_before {
-                        if v == captured_var {
-                            var_is_from_before = true;
-                            break;
-                        }
-                    }
+            // Also propagate ALL captures from ALL downstream performs
+            // Work through every perform after this one
+            for j in (i + 1) .. lines.count {
+                downstream_line := lines[j];
+                
+                if downstream_line.type == .Type_Inferred_Perform || downstream_line.type == .Type_Specified_Perform || downstream_line.type == .Non_Binding_Perform {
+                    downstream_captures := captures_needed[j];
                     
-                    // If it's from before this perform, we need to capture it too
-                    if var_is_from_before {
-                        // Check if we're not already capturing it
-                        already_captured := false;
-                        for already in captures_needed[i] {
-                            if already == captured_var {
-                                already_captured = true;
+                    for captured_var in downstream_captures {
+                        // Check if this variable was defined before THIS perform (i)
+                        var_is_from_before := false;
+                        for v in vars_before {
+                            if v == captured_var {
+                                var_is_from_before = true;
                                 break;
                             }
                         }
                         
-                        if !already_captured {
-                            array.push(&captures_needed[i], captured_var);
+                        // If it's from before this perform, we need to capture it too
+                        if var_is_from_before {
+                            // Check if we're not already capturing it
+                            already_captured := false;
+                            for already in captures_needed[i] {
+                                if already == captured_var {
+                                    already_captured = true;
+                                    break;
+                                }
+                            }
+                            
+                            if !already_captured {
+                                array.push(&captures_needed[i], captured_var);
+                            }
                         }
                     }
                 }

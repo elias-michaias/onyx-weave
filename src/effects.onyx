@@ -1,0 +1,228 @@
+package weave
+
+use core {
+    printf, println, stdio, Result
+}
+
+use core.io { 
+    Reader 
+}
+
+Unwrap :: struct {
+    abort :: #match {
+        (self: Result($T, $E), k: (T) -> $K) -> Result(K, E) {
+            switch self {
+                case .Ok as ok {
+                    return .{ Ok = k(ok) }
+                }
+                case .Err as err {
+                    return .{ Err = err }
+                }
+            }
+        }
+        (self: Optional($T), k: (T) -> $K) -> Optional(K) {
+            switch self {
+                case .Some as s {
+                    return .{ Some = k(s) }
+                }
+                case .None {
+                    return .{}
+                }
+            }
+        }
+    }
+    Suspend :: union (E: type_expr, I: type_expr, K: type_expr) {
+
+        Err: Resumable(E, I, K)    
+        Ok: K
+
+        concretize :: macro ($T: type_expr) => T.{}
+
+        unwrap :: macro (e: Unwrap.Suspend($E, $K, $T)) => {
+            switch e {
+                case .Ok as ok do return ok
+                case .Err do panic("Unwrapped error type")
+            }
+        }
+
+        handle :: #match {
+            (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle) {
+                switch e {
+                    case .Ok as ok do return .{ Ok = ok->handle() }
+                    case .Err as err do return .{ Err = err }
+                }
+            }
+            (self: Unwrap.Suspend($E, $I, $K)) => K.{}
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Unwrap.Suspend.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Unwrap.Suspend(void, void, void).{}
+        }
+    }
+    suspend :: #match {
+        (self: Result($T, $E), k: (T) -> $K) -> Unwrap.Suspend(E, T, K) {
+            switch self {
+                case .Ok as ok {
+                    return .{ Ok = k(ok) }
+                }
+                case .Err as err {
+                    return .{ Err = Resumable(E, T, K).{err, k} }
+                }
+            }
+        }
+        (self: Optional($T), k: (T) -> $K) -> Unwrap.Suspend(void, T, K) {
+            switch self {
+                case .Some as s {
+                    return .{ Ok = k(s) }
+                }
+                case .None {
+                    return .{ Err = Resumable(void, T, K).{void.{}, k} }
+                }
+            }
+        }
+    }
+
+    handle :: #match {
+        (e: Unwrap.Suspend($E, $I, $K)) => e->handle()
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        Unwrap.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => Unwrap.{}
+    }
+}
+
+Value :: struct {
+
+    Suspend :: struct (T: type_expr, K: type_expr) {
+        p: T
+        k: (T) -> K
+
+        handle :: (e: Value.Suspend($T, $K)) => e.k(e.p)
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Value.Suspend.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Value.Suspend(void, void).{}
+        }
+    }
+
+    suspend :: (value: $T, continuation: (T) -> $K) => {
+        return Value.Suspend(T, K).{value,continuation}
+    }
+    
+    handle :: #match {
+        (e: Value.Suspend($T, $K)) => e->handle()
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        Value.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => Value.{}
+    }
+
+}
+
+Console :: struct {
+    Read :: struct (K: type_expr) {
+        k: (str) -> K
+
+        handle :: (self: Read($K)) -> K {
+            stdin_reader := Reader.make(&stdio.stream)
+            defer Reader.free(&stdin_reader)
+            line := stdin_reader |> .read_line |> .strip_whitespace
+            return self.k(line)
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Console.Read.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Console.Read(void).{}
+        }
+    }
+    read :: (k: (str) -> $T) => Read(T).{k}
+
+    Print :: struct (K: type_expr) {
+        p: str
+        k: () -> K
+        
+        handle :: (self: Print($K)) -> K {
+            printf("{}", self.p)
+            return self.k()
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Console.Print.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Console.Print(void).{}
+        }
+    }
+    print :: (input: str, k: () -> $T) => Print(T).{input, k}
+
+    handle :: #match {
+        (self: Console.Print($K)) => self->handle()
+        (self: Console.Read($K)) => self->handle()
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        Console.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => Console.{}
+    }
+}
+
+Search :: struct {
+    Choose :: struct (T: type_expr, K: type_expr) {
+        p: [] T
+        k: (T) -> K
+
+        handle :: (e: Search.Choose($T, $K)) -> [] typeof run(K.{}) {
+            println(e)
+            results: [..] typeof run(K.{})
+            for input in e.p do results->push(run(e.k(input)))
+            return results
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Search.Choose.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Search.Choose(void, void).{}
+        }
+    }
+
+    choose :: (inputs: [] $T, cont: (T) -> $K) => Search.Choose(T, K).{inputs, cont}
+}
+
+
+
+
+
+
+

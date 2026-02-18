@@ -1,0 +1,8 @@
+package weave
+
+ext :: #compiler_extension "src/ext.onyx" {fx}
+fx :: ext.fx
+
+#load "run.onyx"
+#load "effects.onyx"
+
