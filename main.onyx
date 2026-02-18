@@ -18,22 +18,15 @@ opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 program :: () => fx!{
     perform Console.print("init")
 
-    r2 := perform Value.suspend("mushroom")
-    msg := str.concat(r2, " pizza")
-    perform Console.print(msg)
+    x := perform Search.choose(.[1, 2, 3, 4])
+    
+    y := perform Search.choose(.[10, 20, 50, 100])
 
-    r3 := perform Value.suspend("mushroom")
-    msg := str.concat(r3, " tacos")
-    perform Console.print(msg)
-
-    w := perform Console.read()
-    perform Console.print(w)
-
-    z := perform Search.choose(.["pineapple", "cheese", "pepperoni", "sausage"])
-
-    perform Console.print(z)
-
-    return 12
+    if x * 10 == y {
+        return "yep"
+    } else {
+        return "nope"
+    } 
 }
 
 console_map :: (f: () -> $T) => {
@@ -49,7 +42,7 @@ main :: () {
             // or pass an actual defined type for reuse 
             // like `MyHandler`
             |> run(struct {
-                handle :: #match {
+                handler :: #match {
                     (e: Console.Print($K)) => {
                         printf("{}???\n", e.p)
                         return e.k()
@@ -58,6 +51,7 @@ main :: () {
                         case .Ok as ok => handle(ok) |> run
                         case .Err as err => err->resume("foobar") |> run 
                     }
+                    (e: Search.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
                     (e: Value.Suspend(str, $K)) => e.k("toad")
                     e => e->handle()
                 }

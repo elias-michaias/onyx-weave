@@ -6,23 +6,9 @@
 // Generated from /home/elias/Projects/onyx-playground/main.onyx:18:20
 do do {
     return Console.print("init", () => {
-        return Value.suspend("mushroom", (r2) => {
-        msg := str.concat(r2, " pizza")
-        return Console.print(msg, () use (msg) => {
-        return Value.suspend("mushroom", (r3) use (msg) => {
-        msg := str.concat(r3, " tacos")
-        return Console.print(msg, () => {
-        return Console.read((w) => {
-        return Console.print(w, () => {
-        return Search.choose(.["pineapple", "cheese", "pepperoni", "sausage"], (z) => {
-        return Console.print(z, () => {
-        return 12
-    })
-    })
-    })
-    })
-    })
-    })
+        return Search.choose(.[1, 2, 3, 4], (x) => {
+        return Search.choose(.[10, 20, 50, 100], (y) use (x) => {
+        if x * 10 == y {         return "yep"     } else {         return "nope"     }
     })
     })
     })

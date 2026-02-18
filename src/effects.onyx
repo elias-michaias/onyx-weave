@@ -200,12 +200,7 @@ Search :: struct {
         p: [] T
         k: (T) -> K
 
-        handle :: (e: Search.Choose($T, $K)) -> [..] typeof run(K.{}) {
-            println(e)
-            results: [..] typeof run(K.{})
-            for input in e.p do results->push(run(e.k(input)))
-            return results
-        }
+        handle :: (e: Search.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
         
         // handle :: (e: Search.Choose($T, $K)) -> K {
         //     println(e)

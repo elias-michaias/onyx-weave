@@ -72,7 +72,7 @@ handle_fx_macro :: (
     return .{ Ok = code };
 }
 
-// Collect statements, respecting paren matching for multi-line calls
+// Collect statements, respecting paren and brace matching for multi-line calls and blocks
 collect_statements :: (body: str) -> [..] str {
     statements: [..] str;
     statements.allocator = context.temp_allocator;
@@ -81,12 +81,15 @@ collect_statements :: (body: str) -> [..] str {
     current.allocator = context.temp_allocator;
     
     paren_depth := 0;
+    brace_depth := 0;
     
     for line_str in body->split_iter("\n") {
-        // Count parens in this line
+        // Count parens and braces in this line
         for i in line_str.count {
             if line_str[i] == '(' do paren_depth += 1;
             elseif line_str[i] == ')' do paren_depth -= 1;
+            elseif line_str[i] == '{' do brace_depth += 1;
+            elseif line_str[i] == '}' do brace_depth -= 1;
         }
         
         // Add line to current statement
@@ -95,8 +98,8 @@ collect_statements :: (body: str) -> [..] str {
         }
         current->append(line_str);
         
-        // If parens are balanced, we have a complete statement
-        if paren_depth == 0 && current.count > 0 {
+        // If parens and braces are balanced, we have a complete statement
+        if paren_depth == 0 && brace_depth == 0 && current.count > 0 {
             // Copy the string before adding it
             stmt_copy := string.copy(current, allocator=context.temp_allocator);
             array.push(&statements, stmt_copy);
@@ -400,6 +403,9 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     // Determine the starting index for backwards iteration
     start_index: i32;
     
+    // Check if last statement contains a return (for control flow blocks)
+    last_has_return := last.original->contains("return");
+    
     if last.type == .Return_Statement {
         // We have an explicit return - use it as the base
         code->append("return ");
@@ -408,6 +414,11 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     } elseif last.type == .Type_Inferred_Perform || last.type == .Type_Specified_Perform || last.type == .Non_Binding_Perform {
         // Last line is a perform - it needs an empty continuation
         start_index = cast(i32) lines.count - 1;
+    } elseif last_has_return {
+        // Last line is a regular statement that contains a return (like if-else with returns)
+        // Don't add an extra return
+        code->append(last.original);
+        start_index = cast(i32) lines.count - 2;
     } else {
         // Last line is a regular statement - just return it
         code->append("return ");
@@ -520,11 +531,15 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     // Second pass: build the CPS code backwards
     code.count = 0; // Reset code
     
+    // Reuse last_has_return from earlier
     if last.type == .Return_Statement {
         code->append("return ");
         code->append(last.return_value);
     } elseif last.type == .Type_Inferred_Perform || last.type == .Type_Specified_Perform || last.type == .Non_Binding_Perform {
         // Will be handled in the loop
+    } elseif last_has_return {
+        // Control flow block with returns
+        code->append(last.original);
     } else {
         code->append("return ");
         code->append(last.original);
@@ -651,8 +666,12 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 wrapped: dyn_str;
                 wrapped.allocator = context.temp_allocator;
                 wrapped->append(line.original);
-                wrapped->append("\n        ");
-                wrapped->append(code);
+                
+                // If this statement doesn't contain a return, append the rest of the code
+                if !line.original->contains("return") {
+                    wrapped->append("\n        ");
+                    wrapped->append(code);
+                }
                 
                 code = wrapped;
             }

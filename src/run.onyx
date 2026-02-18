@@ -32,12 +32,12 @@ run :: #match {
     macro (e: Result($T/FxHandleable, $E), $Handle: type_expr) -> Result(typeof T.{} |> .handle |> run(Handle), E) {
         #if Handle != void {
             switch e {
-                case .Ok as ok do return .{ Ok = run(handle(ok), Handle) }
+                case .Ok as ok do return .{ Ok = run(handler(ok), Handle) }
                 case .Err as err do return .{ Err = err }
             }
         } else {
             switch e {
-                case .Ok as ok do return .{ Ok = run(ok->handle(), Handle) }
+                case .Ok as ok do return .{ Ok = run(ok->handler(), Handle) }
                 case .Err as err do return .{ Err = err }
             }
         }
@@ -53,27 +53,27 @@ run :: #match {
     }
     macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable), $Handle: type_expr) => {
         #if Handle != void {
-            output := Handle.handle(e)
+            output := Handle.handler(e)
             return run(output, Handle)
         } else {
-            output := handle(e)
+            output := handler(e)
             return run(output, Handle)
         }
     }
     macro (e: Unwrap.Suspend($E, $T, $K), $Handle: type_expr) => e
     macro (e: $E/FxHandleableVoid, $Handle: type_expr) => {
         #if Handle != void {
-            Handle.handle(e)
+            Handle.handler(e)
         } else {
-            handle(e)
+            handler(e)
         }
     }
     macro (e: $E/FxHandleable, $Handle: type_expr) => {
         #if Handle != void {
-            output := Handle.handle(e)
+            output := Handle.handler(e)
             return run(output, Handle)
         } else {
-            output := handle(e)
+            output := handler(e)
             return run(output, Handle)
         }
     }
@@ -438,6 +438,6 @@ Fx :: struct {
     }
 }
 
-handle :: #match {
+handler :: #match {
     e => e->handle()
 }
