@@ -29,9 +29,11 @@ program :: () => fx!{
     w := perform Console.read()
     perform Console.print(w)
 
-    z := perform Search.choose(.[1, 2, 3, 4])
+    z := perform Search.choose(.["pineapple", "cheese", "pepperoni", "sausage"])
 
-    return z
+    perform Console.print(z)
+
+    return 12
 }
 
 console_map :: (f: () -> $T) => {

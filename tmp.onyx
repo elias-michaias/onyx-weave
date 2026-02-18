@@ -14,8 +14,10 @@ do do {
         return Console.print(msg, () => {
         return Console.read((w) => {
         return Console.print(w, () => {
-        return Search.choose(.[1, 2, 3, 4], (z) => {
-        return z
+        return Search.choose(.["pineapple", "cheese", "pepperoni", "sausage"], (z) => {
+        return Console.print(z, () => {
+        return 12
+    })
     })
     })
     })

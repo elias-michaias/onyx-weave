@@ -200,12 +200,18 @@ Search :: struct {
         p: [] T
         k: (T) -> K
 
-        handle :: (e: Search.Choose($T, $K)) -> [] typeof run(K.{}) {
+        handle :: (e: Search.Choose($T, $K)) -> [..] typeof run(K.{}) {
             println(e)
             results: [..] typeof run(K.{})
             for input in e.p do results->push(run(e.k(input)))
             return results
         }
+        
+        // handle :: (e: Search.Choose($T, $K)) -> K {
+        //     println(e)
+        //     println(typeof e.k)
+        //     return 123
+        // }
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -217,7 +223,7 @@ Search :: struct {
         }
     }
 
-    choose :: (inputs: [] $T, cont: (T) -> $K) => Search.Choose(T, K).{inputs, cont}
+    choose :: (inputs: [] $T, cont: (T) -> $K) => Search.Choose(T, K).{Slice.copy(inputs), cont}
 }
 
 
