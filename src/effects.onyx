@@ -65,7 +65,7 @@ Unwrap :: struct {
         }
     }
     suspend :: #match {
-        (self: Result($T, $E), k: (T) -> $K) -> Unwrap.Suspend(E, T, K) {
+        macro (self: Result($T, $E), k: (T) -> $K) -> Unwrap.Suspend(E, T, K) {
             switch self {
                 case .Ok as ok {
                     return .{ Ok = k(ok) }
@@ -75,7 +75,7 @@ Unwrap :: struct {
                 }
             }
         }
-        (self: Optional($T), k: (T) -> $K) -> Unwrap.Suspend(void, T, K) {
+        macro (self: Optional($T), k: (T) -> $K) -> Unwrap.Suspend(void, T, K) {
             switch self {
                 case .Some as s {
                     return .{ Ok = k(s) }
@@ -119,7 +119,7 @@ Value :: struct {
         }
     }
 
-    suspend :: (value: $T, continuation: (T) -> $K) => {
+    suspend :: macro (value: $T, continuation: (T) -> $K) => {
         return Value.Suspend(T, K).{value,continuation}
     }
     
@@ -158,7 +158,7 @@ Console :: struct {
             empty :: macro () => Console.Read(void).{}
         }
     }
-    read :: (k: (str) -> $T) => Read(T).{k}
+    read :: macro (k: (str) -> $T) => Console.Read(T).{k}
 
     Print :: struct (K: type_expr) {
         p: str
@@ -178,7 +178,7 @@ Console :: struct {
             empty :: macro () => Console.Print(void).{}
         }
     }
-    print :: (input: str, k: () -> $T) => Print(T).{input, k}
+    print :: macro (input: str, k: () -> $T) => Console.Print(T).{input, k}
 
     handle :: #match {
         (self: Console.Print($K)) => self->handle()
@@ -235,7 +235,7 @@ Each :: struct {
         }
     }
 
-    choose :: (inputs: [] $T, cont: (T) -> $K) => Each.Choose(T, K).{Slice.copy(inputs), alloc.copy_closure(cont, context.allocator)}
+    choose :: macro (inputs: [] $T, cont: (T) -> $K) => Each.Choose(T, K).{Slice.copy(inputs), alloc.copy_closure(cont, context.allocator)}
 
     Unification :: union (T: type_expr) {
         Unified: T
@@ -264,7 +264,7 @@ Each :: struct {
         }
     }
 
-    guard :: (cond: bool, cont: () -> $K) => Each.Guard(K).{cond, cont}
+    guard :: macro (cond: bool, cont: () -> $K) => Each.Guard(K).{cond, cont}
 
     handle :: #match {
         (e: Each.Choose($T, $K)) => e->handle()
