@@ -8,12 +8,6 @@ use core.io {
     Reader 
 }
 
-fx_allocator: Allocator
-
-#init () {
-    fx_allocator := context.allocator
-}
-
 Unwrap :: struct {
     abort :: #match {
         (self: Result($T, $E), k: (T) -> $K) -> Result(K, E) {
