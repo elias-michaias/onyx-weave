@@ -3,12 +3,37 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:18:20
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:20:16
 do do {
-    return Console.print("init", () => {
-        return Search.choose(.[1, 2, 3, 4], (x) => {
-        return Search.choose(.[10, 20, 50, 100], (y) use (x) => {
-        if x * 10 == y {         return "yep"     } else {         return "nope"     }
+    return Console.read((z) => {
+        return str.concat(z, " sandwich\n")
+    })
+}
+
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:25:20
+do do {
+    return Fx.map(qux(), (result: str) => {
+        return Console.print(result, () => {
+        return Value.suspend("mushroom", (r3) => {
+        msg2 := str.concat(r3, " tacos")
+        return Console.print(msg2, () => {
+        return Unwrap.suspend(res_fail(), (r2) => {
+        msg := str.concat(r2, " pizza")
+        return Console.print(msg, () => {
+        return Each.choose(universe, (l1) => {
+        return Each.choose(universe, (l2) use (l1) => {
+        return Each.guard(l1 == l2, () use (l1, l2) => {
+        return Each.choose(universe, (l3) use (l1, l2) => {
+        return Each.guard(l1 == l3, () use (l1, l2, l3) => {
+        return .[l1, l2, l3]
+    })
+    })
+    })
+    })
+    })
+    })
+    })
+    })
     })
     })
     })

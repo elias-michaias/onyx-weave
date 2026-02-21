@@ -46,9 +46,9 @@ Unwrap :: struct {
         }
 
         handle :: #match {
-            (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> .handle) {
+            (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler) {
                 switch e {
-                    case .Ok as ok do return .{ Ok = ok->handle() }
+                    case .Ok as ok do return .{ Ok = handler(ok) }
                     case .Err as err do return .{ Err = err }
                 }
             }
@@ -195,31 +195,114 @@ Console :: struct {
     }
 }
 
-Search :: struct {
+Each :: struct {
+    prune :: #match {
+        macro (e: [] Each.Unification($T)) => {
+            results: [..] T
+            for i in e {
+                switch i {
+                    case .Unified as u do results->push(u)
+                    case _ ---
+                }
+            }
+            return Each.prune(results)
+        }
+        macro (e: [] [] $T) => {
+            results: [..] T
+            for i in e {
+                for j in i {
+                    results->push(j)
+                }
+            }
+            return Each.prune(results)
+        }
+        macro (e) => e
+    }
+
     Choose :: struct (T: type_expr, K: type_expr) {
         p: [] T
         k: (T) -> K
 
-        handle :: (e: Search.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
-        
-        // handle :: (e: Search.Choose($T, $K)) -> K {
-        //     println(e)
-        //     println(typeof e.k)
-        //     return 123
-        // }
+        handle :: (e: Each.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
 
         handleable :: interface (T: type_expr) {
             t as T
-            Search.Choose.handle(t)
+            Each.Choose.handle(t)
         }
 
         t :: struct {
-            empty :: macro () => Search.Choose(void, void).{}
+            empty :: macro () => Each.Choose(void, void).{}
         }
     }
 
-    choose :: (inputs: [] $T, cont: (T) -> $K) => Search.Choose(T, K).{Slice.copy(inputs), cont}
+    choose :: (inputs: [] $T, cont: (T) -> $K) => Each.Choose(T, K).{Slice.copy(inputs), cont}
+
+    Unification :: union (T: type_expr) {
+        Unified: T
+        None: void
+    }
+
+    Guard :: struct (K: type_expr) {
+        p: bool
+        k: () -> K
+
+        handle :: (e: Each.Guard($K)) => {
+            if e.p {
+                return Unification(typeof run(e.k())).{ Unified = run(e.k()) }
+            } else {
+                return Unification(typeof run(e.k())).{ None = void.{} }
+            }
+        }
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Each.Guard.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Each.Guard(void).{}
+        }
+    }
+
+    guard :: (cond: bool, cont: () -> $K) => Each.Guard(K).{cond, cont}
+
+    handle :: #match {
+        (e: Each.Choose($T, $K)) => e->handle()
+        (e: Each.Guard($K)) => e->handle()
+    }
+
+    handleable :: interface (T: type_expr) {
+        t as T
+        Each.handle(t)
+    }
+
+    t :: struct {
+        empty :: macro () => Each.{}
+    }
 }
+
+#inject Fx {
+    Map :: struct (T: type_expr, K: type_expr) {
+        p: T
+        k: (typeof run(T.{})) -> K
+
+        handle :: macro (e: Fx.Map($T, $K)) => e.p |> run |> e.k
+
+        handleable :: interface (T: type_expr) {
+            t as T
+            Fx.Map.handle(t)
+        }
+
+        t :: struct {
+            empty :: macro () => Fx.Map(void, void).{}
+        }
+    }
+
+    map :: (lhs: $T, rhs: (typeof run(T.{})) -> $K) -> Fx.Map(T, K) where FxHandleable(T), FxHandleable(K) {
+        return Fx.Map(T, K).{lhs, rhs}
+    } 
+}
+    
 
 
 

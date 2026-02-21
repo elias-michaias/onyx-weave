@@ -29,6 +29,7 @@ FxScopedHandler :: interface (T: type_expr) {
 }
 
 run :: #match {
+    macro (e: Fx.Done($T), $Handle: type_expr) => e.value
     macro (e: Result($T/FxHandleable, $E), $Handle: type_expr) -> Result(typeof T.{} |> .handle |> run(Handle), E) {
         #if Handle != void {
             switch e {
@@ -37,17 +38,17 @@ run :: #match {
             }
         } else {
             switch e {
-                case .Ok as ok do return .{ Ok = run(ok->handler(), Handle) }
+                case .Ok as ok do return .{ Ok = run(handler(ok), Handle) }
                 case .Err as err do return .{ Err = err }
             }
         }
     }
     macro (e: Optional($T/FxHandleable), $Handle: type_expr) => switch e {
         #if Handle != void {
-            case .Some as some => run(handle(some), Handle)
+            case .Some as some => run(handler(some), Handle)
             case .None => .{}
         } else {
-            case .Some as some => run(some->handle(), Handle)
+            case .Some as some => run(handler(ok), Handle)
             case .None => .{}
         }
     }
@@ -146,6 +147,12 @@ GuardVoid :: union (E: type_expr, K: type_expr) {
 }
 
 Fx :: struct {
+    Done :: struct (T: type_expr) {
+        value: T
+    }
+
+    done :: macro (e: $T) => Fx.Done(T).{e}
+
     returns :: interface (T: type_expr, R: type_expr) {
         t as T
         { check(t, R) } -> bool
@@ -182,6 +189,7 @@ Fx :: struct {
                 macro (self: type_expr) => check(self.{})
                 macro (self: Optional($T)) => true
                 macro (self: Result($T, $E)) => true
+                macro (self: Map($L, $R)) => check(typeof self.p->handle()) && check(typeof self.k(self.p |> run)->handle())
                 macro (self: $E/FxHandleableVoid) => {}
                 macro (self: $R/FxHandleable) => check(typeof self->handle())
                 macro (self: $R) => {}
@@ -195,6 +203,7 @@ Fx :: struct {
                 macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
                 macro (self: Optional($T), $r1: type_expr) => check(T.{}, r1)
                 macro (self: Result($T, $E), $r1: type_expr) => check(T.{}, r1)
+                macro (self: Map($L, $R), $r1: type_expr) => check(typeof self.p->handle(), r1) && check(typeof self.k(self.p |> run)->handle(), r1)
                 macro (self: $T/{r1.handleable, FxHandleableVoid}, $r1: type_expr) => true
                 macro (self: $T/r1.handleable, $r1: type_expr) => check(typeof self->handle(), r1)
                 macro (self: $T/FxHandleable, $r1: type_expr) => {}
@@ -240,6 +249,7 @@ Fx :: struct {
                 macro (self: type_expr, $r1: type_expr) => check(self.{}, r1)
                 macro (self: Optional($T), $r1: type_expr) => check(T.{}, r1)
                 macro (self: Result($T, $E), $r1: type_expr) => check(T.{}, r1)
+                macro (self: Map($L, $R), $r1: type_expr) => check(typeof self.p->handle(), r1) && check(typeof self.k(self.p |> run)->handle(), r1)
                 macro (self: $T/r1.handleable, $r1: type_expr) => {}
                 macro (self: $T/FxHandleable, $r1: type_expr) => check(typeof self->handle(), r1)
                 macro (self: $T, $r1: type_expr) => true

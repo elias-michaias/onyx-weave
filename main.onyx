@@ -15,22 +15,57 @@ res_succeed :: () -> Result(str, FxError) { return .{ Ok = "bruuhhhh" } }
 opt_fail :: () -> Optional(str) { return .{} }
 opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
 
-program :: () => fx!{
-    perform Console.print("init")
+universe :: .["pineapple", "cheese", "pepperoni", "sausage"]
 
-    x := perform Search.choose(.[1, 2, 3, 4])
-    
-    y := perform Search.choose(.[10, 20, 50, 100])
-
-    if x * 10 == y {
-        return "yep"
-    } else {
-        return "nope"
-    } 
+qux :: () => fx!{
+    z := perform Console.read()
+    return str.concat(z, " sandwich\n")
 }
 
-console_map :: (f: () -> $T) => {
+program :: () => fx!{
+    result: str = perform Fx.map(qux())
+    perform Console.print(result)
+
+    r3 := perform Value.suspend("mushroom")
+    msg2 := str.concat(r3, " tacos")
+    perform Console.print(msg2) 
+
+    r2 := perform Unwrap.suspend(res_fail())
+    msg := str.concat(r2, " pizza")
+    perform Console.print(msg)
+
+    l1 := perform Each.choose(universe)
+    l2 := perform Each.choose(universe)
+    perform Each.guard(l1 == l2)
+
+    l3 := perform Each.choose(universe)
+    perform Each.guard(l1 == l3)
+
+    return .[l1, l2, l3]
+}
+
+console_map :: (f: () -> $T/{
+    Fx.cant._1(Each.t)
+}) => {
     return f()
+}
+
+MyHandler :: struct {
+    handler :: #match {
+        (e: Console.Print($K)) => {
+            printf("{}???\n", e.p)
+            return e.k()
+        }
+        (e: Console.Read($K)) => e->handle()
+        (e: Unwrap.Suspend($E, $T, $K)) => switch e {
+            case .Ok as ok => ok |> run
+            case .Err as err => err->resume("foobar") |> run 
+        }
+        (e: Each.Choose($T, $K)) => e->handle()
+        (e: Each.Guard($K)) => e->handle()
+        (e: Value.Suspend(str, $K)) => e.k("toad")
+        (e: Fx.Map($L, $R)) => e->handle()
+    }
 }
 
 main :: () {
@@ -38,25 +73,10 @@ main :: () {
 
     result := program
             |> console_map 
-            // pass an anonymous type with handle function
-            // or pass an actual defined type for reuse 
-            // like `MyHandler`
-            |> run(struct {
-                handler :: #match {
-                    (e: Console.Print($K)) => {
-                        printf("{}???\n", e.p)
-                        return e.k()
-                    }
-                    (e: Unwrap.Suspend($E, str, $K)) => switch e {
-                        case .Ok as ok => handle(ok) |> run
-                        case .Err as err => err->resume("foobar") |> run 
-                    }
-                    (e: Search.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
-                    (e: Value.Suspend(str, $K)) => e.k("toad")
-                    e => e->handle()
-                }
-            })
+            |> run(MyHandler)
+            |> Each.prune
 
+    println(typeof result)
     println(result)
 }
 
