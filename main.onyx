@@ -12,9 +12,9 @@ FxError :: enum {
 }
 
 res_fail :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
-res_succeed :: () -> Result(str, FxError) { return .{ Ok = "bruuhhhh" } }
+res_succeed :: () -> Result(str, FxError) { return .{ Ok = "placeholder1" } }
 opt_fail :: () -> Optional(str) { return .{} }
-opt_succeed :: () -> Optional(str) { return .{ Some = "swag" } }
+opt_succeed :: () -> Optional(str) { return .{ Some = "placeholder2" } }
 
 universe :: .["pineapple", "cheese", "pepperoni", "sausage"]
 
@@ -33,6 +33,7 @@ program :: () => fx!{
     perform Console.print(msg)
 
     txt := perform Console.read()
+    perform Console.print("closure test (should print what you typed): ")
     perform Console.print(txt)
 
     l1 := perform Each.choose(universe)
@@ -52,7 +53,7 @@ console_map :: (f: () -> $T) => {
 MyHandler :: struct {
     handler :: #match {
         (e: Console.Print($K)) => {
-            printf("{}???\n", e.p)
+            printf("{}\n", e.p)
             return e.k()
         }
         (e: Console.Read($K)) => e->handle()
