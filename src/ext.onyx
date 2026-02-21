@@ -560,7 +560,7 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         if captures.count > 0 {
             use_buf: dyn_str;
             use_buf.allocator = context.temp_allocator;
-            use_buf->append(" use (");
+            use_buf->append(" use #stack_alloc (");
             for j in 0 .. captures.count {
                 if j > 0 do use_buf->append(", ");
                 use_buf->append(captures[j]);

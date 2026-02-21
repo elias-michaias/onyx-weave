@@ -1,11 +1,17 @@
 package weave
 
 use core {
-    printf, println, stdio, Result
+    alloc, printf, println, stdio, Result
 }
 
 use core.io { 
     Reader 
+}
+
+fx_allocator: Allocator
+
+#init () {
+    fx_allocator := context.allocator
 }
 
 Unwrap :: struct {
@@ -235,7 +241,7 @@ Each :: struct {
         }
     }
 
-    choose :: (inputs: [] $T, cont: (T) -> $K) => Each.Choose(T, K).{Slice.copy(inputs), cont}
+    choose :: (inputs: [] $T, cont: (T) -> $K) => Each.Choose(T, K).{Slice.copy(inputs), alloc.copy_closure(cont, context.allocator)}
 
     Unification :: union (T: type_expr) {
         Unified: T
