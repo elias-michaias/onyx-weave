@@ -8,10 +8,10 @@ use weave {*}
 #load "src/module.onyx"
 
 program :: () => {
-    return Console.print("Type something: ", 0, (ctx) => {
-        return Console.read(0, (txt, ctx) => {
-            return Console.print("closure test (should print what you typed): ", .{txt=txt}, (ctx) => {
-                return Console.print(ctx.txt, "hoopla", (ctx) => {
+    return Console.print(0, "Type something: ", (ctx) => {
+        return Console.read(0, (ctx, txt) => {
+            return Console.print(.{txt=txt}, "closure test (should print what you typed): ", (ctx) => {
+                return Console.print("hoopla", ctx.txt, (ctx) => {
                     return ctx
                 })
             })
@@ -29,15 +29,20 @@ MyHandler :: struct {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
-            return e.k(line, e.ctx)
+            return e.k(e.ctx, line)
         }
     }
+}
+
+console_map :: (f: () -> $T) -> T {
+    return f()
 }
 
 main :: () {
     println(typeof program)
 
-    result := program()
+    result := program
+            |> console_map
             |> run(MyHandler)
 
     println(typeof result)

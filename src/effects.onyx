@@ -140,14 +140,14 @@ Value :: struct {
 
 Console :: struct {
     Read :: struct (K: type_expr, C: type_expr) {
-        k: (str, C) -> K
+        k: (C, str) -> K
         ctx: C
 
         handle :: macro (self: Console.Read($K, $C)) -> K {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
-            return self.k(line, self.ctx)
+            return self.k(self.ctx, line)
         }
 
         handleable :: interface (T: type_expr) {
@@ -159,7 +159,7 @@ Console :: struct {
             empty :: macro () => Console.Read(void, void).{}
         }
     }
-    read :: macro (ctx: $C, k: (str, C) -> $T) => Console.Read(T, C).{k, ctx}
+    read :: macro (ctx: $C, k: (C, str) -> $T) => Console.Read(T, C).{k, ctx}
 
     Print :: struct (K: type_expr, C: type_expr) {
         p: str
@@ -180,7 +180,7 @@ Console :: struct {
             empty :: macro () => Console.Print(void, void).{}
         }
     }
-    print :: macro (input: str, ctx: $C, k: (C) -> $T) => Console.Print(T, C).{input, k, ctx}
+    print :: macro (ctx: $C, input: str, k: (C) -> $T) => Console.Print(T, C).{input, k, ctx}
 
     handle :: #match {
         (self: Console.Print($K, $C)) => self->handle()
