@@ -7,16 +7,16 @@ use weave {*}
 
 #load "src/module.onyx"
 
-program :: macro () => do do {
-    return Console.print("Type something: ", (ctx) => {
-        return Console.read((txt, ctx) => {
-            return Console.print("closure test (should print what you typed): ", (ctx) => {
-                return Console.print(txt, (ctx) => {
-                    return 12
-                }, .{})
-            }, .{txt})
-        }, .{})
-    }, .{})
+program :: () => {
+    return Console.print("Type something: ", 0, (ctx) => {
+        return Console.read(0, (txt, ctx) => {
+            return Console.print("closure test (should print what you typed): ", .{txt=txt}, (ctx) => {
+                return Console.print(ctx.txt, "hoopla", (ctx) => {
+                    return ctx
+                })
+            })
+        })
+    })
 }
 
 MyHandler :: struct {
@@ -35,7 +35,7 @@ MyHandler :: struct {
 }
 
 main :: () {
-    println(typeof program())
+    println(typeof program)
 
     result := program()
             |> run(MyHandler)
