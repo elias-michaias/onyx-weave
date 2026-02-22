@@ -7,39 +7,29 @@ use weave {*}
 
 #load "src/module.onyx"
 
-FxError :: enum {
-    PrintFoo
-    GuardTriggered
-}
-
-res_fail :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
-res_succeed :: () -> Result(str, FxError) { return .{ Ok = "placeholder1" } }
-opt_fail :: () -> Optional(str) { return .{} }
-opt_succeed :: () -> Optional(str) { return .{ Some = "placeholder2" } }
-
-universe :: .["pineapple", "cheese", "pepperoni", "sausage"]
-
-program :: macro () => fx!{
-    
-    perform Console.print("Type something: ")
-    txt := perform Console.read()
-    perform Console.print("closure test (should print what you typed): ")
-    perform Console.print(txt)
-
-    return 12
+program :: macro () => do do {
+    return Console.print("Type something: ", (ctx) => {
+        return Console.read((txt, ctx) => {
+            return Console.print("closure test (should print what you typed): ", (ctx) => {
+                return Console.print(txt, (ctx) => {
+                    return 12
+                }, .{})
+            }, .{txt})
+        }, .{})
+    }, .{})
 }
 
 MyHandler :: struct {
     handler :: #match {
-        macro (e: Console.Print($K)) => {
+        macro (e: Console.Print($K, $C)) => {
             printf("{}\n", e.p)
-            return e.k()
+            return e.k(e.ctx)
         }
-        macro (e: Console.Read($K)) => {
+        macro (e: Console.Read($K, $C)) => {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
-            return e.k(line)
+            return e.k(line, e.ctx)
         }
     }
 }
@@ -49,7 +39,6 @@ main :: () {
 
     result := program()
             |> run(MyHandler)
-            |> Each.prune
 
     println(typeof result)
     println(result)

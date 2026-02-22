@@ -139,14 +139,15 @@ Value :: struct {
 }
 
 Console :: struct {
-    Read :: struct (K: type_expr) {
-        k: (str) -> K
+    Read :: struct (K: type_expr, C: type_expr) {
+        k: (str, C) -> K
+        ctx: C
 
-        handle :: macro (self: Console.Read($K)) -> K {
+        handle :: macro (self: Console.Read($K, $C)) -> K {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
-            return self.k(line)
+            return self.k(line, self.ctx)
         }
 
         handleable :: interface (T: type_expr) {
@@ -155,18 +156,19 @@ Console :: struct {
         }
 
         t :: struct {
-            empty :: macro () => Console.Read(void).{}
+            empty :: macro () => Console.Read(void, void).{}
         }
     }
-    read :: macro (k: (str) -> $T) => Console.Read(T).{k}
+    read :: macro (k: (str, C) -> $T, ctx: $C) => Console.Read(T, C).{k, ctx}
 
-    Print :: struct (K: type_expr) {
+    Print :: struct (K: type_expr, C: type_expr) {
         p: str
-        k: () -> K
+        k: (C) -> K
+        ctx: C
         
-        handle :: (self: Print($K)) -> K {
+        handle :: (self: Print($K, $C)) -> K {
             printf("{}", self.p)
-            return self.k()
+            return self.k(self.ctx)
         }
 
         handleable :: interface (T: type_expr) {
@@ -175,14 +177,14 @@ Console :: struct {
         }
 
         t :: struct {
-            empty :: macro () => Console.Print(void).{}
+            empty :: macro () => Console.Print(void, void).{}
         }
     }
-    print :: macro (input: str, k: () -> $T) => Console.Print(T).{input, k}
+    print :: macro (input: str, k: (C) -> $T, ctx: $C) => Console.Print(T, C).{input, k, ctx}
 
     handle :: #match {
-        (self: Console.Print($K)) => self->handle()
-        (self: Console.Read($K)) => self->handle()
+        (self: Console.Print($K, $C)) => self->handle()
+        (self: Console.Read($K, $C)) => self->handle()
     }
 
     handleable :: interface (T: type_expr) {
