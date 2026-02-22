@@ -1,6 +1,7 @@
 package main
 
 use core {*}
+use core.io { Reader }
 use core {alloc}
 use weave {*}
 
@@ -18,61 +19,35 @@ opt_succeed :: () -> Optional(str) { return .{ Some = "placeholder2" } }
 
 universe :: .["pineapple", "cheese", "pepperoni", "sausage"]
 
-qux :: () => fx!{
-    z := perform Console.read()
-    return str.concat(z, " sandwich\n")
-}
-
-program :: () => fx!{
-    r3 := perform Value.suspend("mushroom")
-    msg2 := str.concat(r3, " tacos")
-    perform Console.print(msg2) 
-
-    r2 := perform Unwrap.suspend(res_fail())
-    msg := str.concat(r2, " pizza")
-    perform Console.print(msg)
-
+program :: macro () => fx!{
+    
+    perform Console.print("Type something: ")
     txt := perform Console.read()
     perform Console.print("closure test (should print what you typed): ")
     perform Console.print(txt)
 
-    l1 := perform Each.choose(universe)
-    l2 := perform Each.choose(universe)
-    perform Each.guard(l1 == l2)
-
-    l3 := perform Each.choose(universe)
-    perform Each.guard(l1 == l3)
-
-    return .[l1, l2, l3]
-}
-
-console_map :: (f: () -> $T) => {
-    return f()
+    return 12
 }
 
 MyHandler :: struct {
     handler :: #match {
-        (e: Console.Print($K)) => {
+        macro (e: Console.Print($K)) => {
             printf("{}\n", e.p)
             return e.k()
         }
-        (e: Console.Read($K)) => e->handle()
-        (e: Unwrap.Suspend($E, $T, $K)) => switch e {
-            case .Ok as ok => ok |> run
-            case .Err as err => err->resume("foobar") |> run 
+        macro (e: Console.Read($K)) => {
+            stdin_reader := Reader.make(&stdio.stream)
+            defer Reader.free(&stdin_reader)
+            line := stdin_reader |> .read_line |> .strip_whitespace
+            return e.k(line)
         }
-        (e: Each.Choose($T, $K)) => e->handle()
-        (e: Each.Guard($K)) => e->handle()
-        (e: Value.Suspend(str, $K)) => e.k("toad")
-        (e: Fx.Map($L, $R)) => e->handle()
     }
 }
 
 main :: () {
-    println(typeof program)
+    println(typeof program())
 
-    result := program
-            |> console_map 
+    result := program()
             |> run(MyHandler)
             |> Each.prune
 

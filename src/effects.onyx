@@ -142,7 +142,7 @@ Console :: struct {
     Read :: struct (K: type_expr) {
         k: (str) -> K
 
-        handle :: (self: Read($K)) -> K {
+        handle :: macro (self: Console.Read($K)) -> K {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
@@ -223,7 +223,7 @@ Each :: struct {
         p: [] T
         k: (T) -> K
 
-        handle :: (e: Each.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
+        handle :: macro (e: Each.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
 
         handleable :: interface (T: type_expr) {
             t as T
