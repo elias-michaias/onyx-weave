@@ -143,7 +143,7 @@ Console :: struct {
         k: (C, str) -> K
         ctx: C
 
-        handle :: macro (self: Console.Read($K, $C)) -> K {
+        handle :: (self: Console.Read($K, $C)) -> K {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
@@ -159,7 +159,7 @@ Console :: struct {
             empty :: macro () => Console.Read(void, void).{}
         }
     }
-    read :: macro (ctx: $C, k: (C, str) -> $T) => Console.Read(T, C).{k, ctx}
+    read :: (ctx: $C, k: (C, str) -> $T) => Console.Read(T, C).{k, ctx}
 
     Print :: struct (K: type_expr, C: type_expr) {
         p: str
@@ -180,7 +180,7 @@ Console :: struct {
             empty :: macro () => Console.Print(void, void).{}
         }
     }
-    print :: macro (ctx: $C, input: str, k: (C) -> $T) => Console.Print(T, C).{input, k, ctx}
+    print :: (input: str, ctx: $C, k: (C) -> $T) => Console.Print(T, C).{input, k, ctx}
 
     handle :: #match {
         (self: Console.Print($K, $C)) => self->handle()

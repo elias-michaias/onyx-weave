@@ -1,18 +1,18 @@
 package main
 
 use core {*}
-use core.io { Reader }
+use core.io {Reader}
 use core {alloc}
 use weave {*}
 
 #load "src/module.onyx"
 
 program :: () => {
-    return Console.print(0, "Type something: ", (ctx) => {
-        return Console.read(0, (ctx, txt) => {
-            return Console.print(.{txt=txt}, "closure test (should print what you typed): ", (ctx) => {
-                return Console.print("hoopla", ctx.txt, (ctx) => {
-                    return ctx
+    return Console.print("Type something:", 0, _ => {
+        return Console.read(0, (_, txt) => {
+            return Console.print("closure test (should print what you typed):", .{txt=txt}, _ => {
+                return Console.print(_.txt, "hoopla", _ => {
+                    return _
                 })
             })
         })
