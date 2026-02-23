@@ -3,16 +3,20 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:24:20
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:18:20
 do do {
-    return Each.choose(.["yes", "no"], 0, (__ctx__, x) => {
-        msg := str.concat("cool: ", x)
-        return Console.print(msg, .{x=x}, (__ctx__) => {
-        return Console.read(.{x=__ctx__.x}, (__ctx__, y) => {
-        return Console.print("capture test: ", .{x=__ctx__.x, y=y}, (__ctx__) => {
-        return Each.guard(__ctx__.x == "yes", .{y=__ctx__.y}, (__ctx__) => {
-        return Console.print(__ctx__.y, 0, (__ctx__) => {
-        return 12
+    return Unwrap.suspend(res_succeed(), 0, (__ctx__, z) => {
+        return Each.choose(.["yes", "no"], .{z=z}, (__ctx__, x) => {
+        msg := str.concat("will finish: ", x)
+        return Console.print(msg, .{z=__ctx__.z, x=x}, (__ctx__) => {
+        return Each.guard(__ctx__.x == "yes", .{z=__ctx__.z, x=__ctx__.x}, (__ctx__) => {
+        return Console.read(.{z=__ctx__.z, x=__ctx__.x}, (__ctx__, y) => {
+        return Console.print("capture test: ", .{z=__ctx__.z, x=__ctx__.x, y=y}, (__ctx__) => {
+        return Console.print(__ctx__.y, .{z=__ctx__.z, x=__ctx__.x}, (__ctx__) => {
+        return Console.print(__ctx__.z, .{x=__ctx__.x}, (__ctx__) => {
+        return __ctx__.x
+    })
+    })
     })
     })
     })

@@ -7,37 +7,30 @@ use weave {*}
 
 #load "src/module.onyx"
 
-// program :: () => {
-//     return Each.choose(.["yes", "no"], null, (_, c) => {
-//         return Console.print(str.concat("Type something: ", c), null, _ => {
-//             return Console.read(null, (_, txt) => {
-//                 return Console.print("closure test (should print what you typed):", .{txt=txt}, _ => {
-//                     return Console.print(_.txt, "hoopla", _ => {
-//                         return _
-//                     })
-//                 })
-//             })
-//         })
-//     })
-// }
+res_fail :: () -> Result(str, str) {
+    return .{ Err = "banana" }
+}
+
+res_succeed :: () -> Result(str, str) {
+    return .{ Ok = "apple" }
+}
 
 program :: () => fx!{
+    z := perform Unwrap.suspend(res_succeed())
     x := perform Each.choose(.["yes", "no"])
-    msg := str.concat("cool: ", x)
+    msg := str.concat("will finish: ", x)
     perform Console.print(msg)
+    perform Each.guard(x == "yes")
     y := perform Console.read()
     perform Console.print("capture test: ")
-    perform Each.guard(x == "yes")
     perform Console.print(y)
-    return 12
+    perform Console.print(z)
+    return x
 }
 
 MyHandler :: struct {
     handler :: #match {
-        macro (e: Console.Print($K, $C)) => {
-            printf("{}\n", e.p)
-            return e.k(e.ctx)
-        }
+        macro (e: Console.Print($K, $C)) => e->handle()
         macro (e: Console.Read($K, $C)) => {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
@@ -46,6 +39,7 @@ MyHandler :: struct {
         }
         macro (e: Each.Choose($T, $K, $C)) => e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
         macro (e: Each.Guard($K, $C)) => e->handle()
+        macro (e: Unwrap.Suspend($T, $I, $K, $C)) => e->handle()
     }
 }
 
@@ -60,8 +54,7 @@ main :: () {
             |> console_map
             |> run(MyHandler)
 
-    println(typeof result)
-    println(result)
+    printf("=======\nresult type: {}\nresult: {}\n", typeof result, result)
 }
 
 

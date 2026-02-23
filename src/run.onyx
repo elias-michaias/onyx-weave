@@ -52,7 +52,7 @@ run :: #match {
             case .None => .{}
         }
     }
-    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable), $Handle: type_expr) => {
+    macro (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C), $Handle: type_expr) => {
         #if Handle != void {
             output := Handle.handler(e)
             return run(output, Handle)
@@ -61,7 +61,7 @@ run :: #match {
             return run(output, Handle)
         }
     }
-    macro (e: Unwrap.Suspend($E, $T, $K), $Handle: type_expr) => e
+    macro (e: Unwrap.Suspend($E, $T, $K, $C), $Handle: type_expr) => e
     macro (e: $E/FxHandleableVoid, $Handle: type_expr) => {
         #if Handle != void {
             Handle.handler(e)
@@ -80,70 +80,6 @@ run :: #match {
     }
     macro (e: $E, $Handle: type_expr) => e
     macro (e: $E) => run(e, void)
-}
-
-Resumable :: struct (E: type_expr, I: type_expr, K: type_expr) {
-    p: E
-    k: (I) -> K
-
-    resume :: macro (self: Resumable($E, $I, $K), input: I) => self.k(input)
-}
-
-ResumableVoid :: struct (E: type_expr, K: type_expr) {
-    p: E
-    k: () -> K
-
-    resume :: macro (self: ResumableVoid($E, $K)) => self.k()
-}
-
-Continuation :: struct (I: type_expr, K: type_expr) {
-    k: (I) -> K
-
-    resume :: macro (self: Continuation($I, $K), input: I) => self.k(input)
-}
-
-ContinuationVoid :: struct (K: type_expr) {
-    k: () -> K
-
-    resume :: macro (self: ContinuationVoid($K)) => self.k()
-}
-
-GuardVoid :: union (E: type_expr, K: type_expr) {
-
-    Ok: () -> K
-    Err: ResumableVoid(E, K)    
-
-    concretize :: macro ($T: type_expr) => T.{}
-
-    err :: (err: $E, k: () -> $T) -> GuardVoid(E, T) {
-        return GuardVoid(E, T).{ Err = .{err, k} }
-    }
-
-    ok :: (err: $E, k: () -> $T) -> GuardVoid(E, T) {
-        return GuardVoid(E, T).{ Ok = k }
-    }
-
-    handle :: #match {
-        (self: GuardVoid($E, $K)) => {
-            switch self {
-                case .Ok as ok {
-                    return ok()
-                }
-                case .Err as err {
-                    return err.k()
-                }
-            }
-        }
-    }
-
-    handleable :: interface (T: type_expr) {
-        t as T
-        GuardVoid.handle(t)
-    }
-
-    t :: struct {
-        empty :: macro () => GuardVoid(void, void).{}
-    }
 }
 
 Fx :: struct {

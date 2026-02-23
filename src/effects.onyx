@@ -31,14 +31,23 @@ Unwrap :: struct {
             }
         }
     }
-    Suspend :: union (E: type_expr, I: type_expr, K: type_expr) {
 
-        Err: Resumable(E, I, K)    
+    Resumable :: struct (E: type_expr, I: type_expr, K: type_expr, C: type_expr) {
+        p: E
+        k: (C, I) -> K
+        ctx: C
+
+        resume :: macro (self: Unwrap.Resumable($E, $I, $K, $C), input: I) => self.k(self.ctx, input)
+    }
+
+    Suspend :: union (E: type_expr, I: type_expr, K: type_expr, C: type_expr) {
+
+        Err: Unwrap.Resumable(E, I, K, C)    
         Ok: K
 
         concretize :: macro ($T: type_expr) => T.{}
 
-        unwrap :: macro (e: Unwrap.Suspend($E, $K, $T)) => {
+        unwrap :: macro (e: Unwrap.Suspend($E, $K, $T, $C)) => {
             switch e {
                 case .Ok as ok do return ok
                 case .Err do panic("Unwrapped error type")
@@ -46,13 +55,13 @@ Unwrap :: struct {
         }
 
         handle :: #match {
-            (e: Unwrap.Suspend($E, $T, $K/FxHandleable)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler) {
+            (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler, C) {
                 switch e {
                     case .Ok as ok do return .{ Ok = handler(ok) }
                     case .Err as err do return .{ Err = err }
                 }
             }
-            (self: Unwrap.Suspend($E, $I, $K)) => K.{}
+            (self: Unwrap.Suspend($E, $I, $K, $C)) => K.{}
         }
 
         handleable :: interface (T: type_expr) {
@@ -61,34 +70,34 @@ Unwrap :: struct {
         }
 
         t :: struct {
-            empty :: macro () => Unwrap.Suspend(void, void, void).{}
+            empty :: macro () => Unwrap.Suspend(void, void, void, void).{}
         }
     }
     suspend :: #match {
-        macro (self: Result($T, $E), k: (T) -> $K) -> Unwrap.Suspend(E, T, K) {
+        macro (self: Result($T, $E), ctx: $C, k: (C, T) -> $K) -> Unwrap.Suspend(E, T, K, C) {
             switch self {
                 case .Ok as ok {
-                    return .{ Ok = k(ok) }
+                    return .{ Ok = k(ctx, ok) }
                 }
                 case .Err as err {
-                    return .{ Err = Resumable(E, T, K).{err, k} }
+                    return .{ Err = Unwrap.Resumable(E, T, K, C).{err, k, ctx} }
                 }
             }
         }
-        macro (self: Optional($T), k: (T) -> $K) -> Unwrap.Suspend(void, T, K) {
+        macro (self: Optional($T), ctx: $C, k: (C, T) -> $K) -> Unwrap.Suspend(void, T, K) {
             switch self {
                 case .Some as s {
-                    return .{ Ok = k(s) }
+                    return .{ Ok = k(ctx, s) }
                 }
                 case .None {
-                    return .{ Err = Resumable(void, T, K).{void.{}, k} }
+                    return .{ Err = Unwrap.Resumable(void, T, K, C).{void.{}, k, ctx} }
                 }
             }
         }
     }
 
     handle :: #match {
-        (e: Unwrap.Suspend($E, $I, $K)) => e->handle()
+        (e: Unwrap.Suspend($E, $I, $K, $C)) => e->handle()
     }
 
     handleable :: interface (T: type_expr) {
@@ -108,7 +117,7 @@ Value :: struct {
         k: (C, T) -> K
         ctx: C
 
-        handle :: (e: Value.Suspend($T, $K, $C)) => e.k(e.ctx, e.p)
+        handle :: macro (e: Value.Suspend($T, $K, $C)) => e.k(e.ctx, e.p)
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -144,7 +153,7 @@ Console :: struct {
         k: (C, str) -> K
         ctx: C
 
-        handle :: (self: Console.Read($K, $C)) -> K {
+        handle :: macro (self: Console.Read($K, $C)) -> K {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
@@ -167,8 +176,8 @@ Console :: struct {
         k: (C) -> K
         ctx: C
         
-        handle :: (self: Print($K, $C)) -> K {
-            printf("{}", self.p)
+        handle :: macro (self: Console.Print($K, $C)) -> K {
+            printf("{}\n", self.p)
             return self.k(self.ctx)
         }
 
@@ -251,11 +260,11 @@ Each :: struct {
         k: (C) -> K
         ctx: C
 
-        handle :: (e: Each.Guard($K, $C)) => {
+        handle :: macro (e: Each.Guard($K, $C)) => {
             if e.p {
-                return Unification(typeof run(e.k(e.ctx))).{ Unified = run(e.k(e.ctx)) }
+                return Each.Unification(typeof run(e.k(e.ctx))).{ Unified = run(e.k(e.ctx)) }
             } else {
-                return Unification(typeof run(e.k(e.ctx))).{ None = void.{} }
+                return Each.Unification(typeof run(e.k(e.ctx))).{ None = void.{} }
             }
         }
 
