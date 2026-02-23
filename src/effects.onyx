@@ -103,11 +103,12 @@ Unwrap :: struct {
 
 Value :: struct {
 
-    Suspend :: struct (T: type_expr, K: type_expr) {
+    Suspend :: struct (T: type_expr, K: type_expr, C: type_expr) {
         p: T
-        k: (T) -> K
+        k: (C, T) -> K
+        ctx: C
 
-        handle :: (e: Value.Suspend($T, $K)) => e.k(e.p)
+        handle :: (e: Value.Suspend($T, $K, $C)) => e.k(e.ctx, e.p)
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -115,12 +116,12 @@ Value :: struct {
         }
 
         t :: struct {
-            empty :: macro () => Value.Suspend(void, void).{}
+            empty :: macro () => Value.Suspend(void, void, void).{}
         }
     }
 
-    suspend :: macro (value: $T, continuation: (T) -> $K) => {
-        return Value.Suspend(T, K).{value,continuation}
+    suspend :: macro (value: $T, ctx: $C, continuation: (C, T) -> $K) => {
+        return Value.Suspend(T, K).{value,continuation,ctx}
     }
     
     handle :: #match {
@@ -221,11 +222,12 @@ Each :: struct {
         macro (e) => e
     }
 
-    Choose :: struct (T: type_expr, K: type_expr) {
+    Choose :: struct (T: type_expr, K: type_expr, C: type_expr) {
         p: [] T
-        k: (T) -> K
+        k: (C, T) -> K
+        ctx: C
 
-        handle :: macro (e: Each.Choose($T, $K)) => e.p->map((i) use (e) => i |> e.k |> run)
+        handle :: macro (e: Each.Choose($T, $K, $C)) => e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -233,26 +235,27 @@ Each :: struct {
         }
 
         t :: struct {
-            empty :: macro () => Each.Choose(void, void).{}
+            empty :: macro () => Each.Choose(void, void, void).{}
         }
     }
 
-    choose :: macro (inputs: [] $T, cont: (T) -> $K) => Each.Choose(T, K).{Slice.copy(inputs), alloc.copy_closure(cont, context.allocator)}
+    choose :: macro (inputs: [] $T, ctx: $C, cont: (C, T) -> $K) => Each.Choose(T, K, C).{Slice.copy(inputs), cont, ctx}
 
     Unification :: union (T: type_expr) {
         Unified: T
         None: void
     }
 
-    Guard :: struct (K: type_expr) {
+    Guard :: struct (K: type_expr, C: type_expr) {
         p: bool
-        k: () -> K
+        k: (C) -> K
+        ctx: C
 
-        handle :: (e: Each.Guard($K)) => {
+        handle :: (e: Each.Guard($K, $C)) => {
             if e.p {
-                return Unification(typeof run(e.k())).{ Unified = run(e.k()) }
+                return Unification(typeof run(e.k(e.ctx))).{ Unified = run(e.k(e.ctx)) }
             } else {
-                return Unification(typeof run(e.k())).{ None = void.{} }
+                return Unification(typeof run(e.k(e.ctx))).{ None = void.{} }
             }
         }
 
@@ -262,15 +265,15 @@ Each :: struct {
         }
 
         t :: struct {
-            empty :: macro () => Each.Guard(void).{}
+            empty :: macro () => Each.Guard(void, void).{}
         }
     }
 
-    guard :: macro (cond: bool, cont: () -> $K) => Each.Guard(K).{cond, cont}
+    guard :: macro (cond: bool, ctx: $C, cont: (C) -> $K) => Each.Guard(K, C).{cond, cont, ctx}
 
     handle :: #match {
-        (e: Each.Choose($T, $K)) => e->handle()
-        (e: Each.Guard($K)) => e->handle()
+        (e: Each.Choose($T, $K, $C)) => e->handle()
+        (e: Each.Guard($K, $C)) => e->handle()
     }
 
     handleable :: interface (T: type_expr) {

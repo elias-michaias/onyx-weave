@@ -240,7 +240,8 @@ find_referenced_vars :: (code: str, defined_vars: [..] str) -> [..] str {
             // Check character before
             if actual_idx > 0 {
                 before := code[actual_idx - 1];
-                if is_identifier_char(before) {
+                // If preceded by '.' this is a struct field access — not a bare reference
+                if before == '.' || is_identifier_char(before) {
                     is_whole_word = false;
                 }
             }
@@ -281,6 +282,72 @@ is_identifier_char :: (c: u8) -> bool {
     if c >= '0' && c <= '9' do return true;
     if c == '_' do return true;
     return false;
+}
+
+// Rewrite all whole-word occurrences of captured variable names to __ctx__.varname
+// Uses the same whole-word boundary logic as find_referenced_vars
+rewrite_captures :: (code: str, captures: [..] str) -> str {
+    if captures.count == 0 do return code;
+
+    result: dyn_str;
+    result.allocator = context.temp_allocator;
+    result->append(code);
+
+    for var in captures {
+        if var.count == 0 do continue;
+
+        rewritten: dyn_str;
+        rewritten.allocator = context.temp_allocator;
+
+        src: str = result;
+        idx := 0;
+
+        while idx < src.count {
+            found_idx := src[idx .. src.count]->index_of(var);
+            if found_idx == -1 {
+                rewritten->append(src[idx .. src.count]);
+                break;
+            }
+
+            actual_idx := idx + found_idx;
+
+            // Check whole-word boundaries
+            is_whole_word := true;
+
+            if actual_idx > 0 {
+                before_char := src[actual_idx - 1];
+                // If preceded by '.' this var is already a struct field access — skip it
+                if before_char == '.' || is_identifier_char(before_char) {
+                    is_whole_word = false;
+                }
+            }
+
+            if actual_idx + var.count < src.count {
+                after_char := src[actual_idx + var.count];
+                // If followed by '=' this is a struct field name — don't rewrite it
+                if after_char == '=' || is_identifier_char(after_char) {
+                    is_whole_word = false;
+                }
+            }
+
+            if is_whole_word {
+                // Append everything up to this occurrence
+                rewritten->append(src[idx .. actual_idx]);
+                // Append __ctx__.varname instead
+                rewritten->append("__ctx__.");
+                rewritten->append(var);
+                idx = actual_idx + var.count;
+            } else {
+                // Not a whole word match — copy one char and move on
+                rewritten->append(src[idx .. idx + 1]);
+                idx += 1;
+            }
+        }
+
+        result = rewritten;
+    }
+
+    return result;
 }
 
 // Helper to insert continuation into effect call
@@ -441,9 +508,17 @@ build_cps :: (lines: [] Parsed_Line) -> str {
     // These are variables that CAN be captured at that perform
     vars_defined_before: [..] [..] str;
     vars_defined_before.allocator = context.temp_allocator;
+
+    // Also track which vars are genuine locals at each perform's scope —
+    // i.e. defined between the PREVIOUS perform and THIS perform (not behind __ctx__)
+    vars_local_at: [..] [..] str;
+    vars_local_at.allocator = context.temp_allocator;
     
     all_defined: [..] str;
     all_defined.allocator = context.temp_allocator;
+
+    // Track the index of the last seen perform so we know the scope boundary
+    last_perform_idx := -1;
     
     for idx in 0 .. lines.count {
         line := lines[idx];
@@ -455,6 +530,27 @@ build_cps :: (lines: [] Parsed_Line) -> str {
             array.push(&defined_copy, v);
         }
         array.push(&vars_defined_before, defined_copy);
+
+        // Compute locals at this perform: vars defined since the last perform
+        local_copy: [..] str;
+        local_copy.allocator = context.temp_allocator;
+        if line.type == .Type_Inferred_Perform || line.type == .Type_Specified_Perform || line.type == .Non_Binding_Perform {
+            // Walk from last_perform_idx+1 to idx-1 collecting defines
+            for scan in (last_perform_idx + 1) .. idx {
+                if lines[scan].defines_var.count > 0 {
+                    array.push(&local_copy, lines[scan].defines_var);
+                }
+            }
+            // Also include the bound var of the previous perform itself (it's a param, a local)
+            if last_perform_idx >= 0 {
+                prev := lines[last_perform_idx];
+                if prev.var_name.count > 0 {
+                    array.push(&local_copy, prev.var_name);
+                }
+            }
+            last_perform_idx = idx;
+        }
+        array.push(&vars_local_at, local_copy);
         
         // Add any new definitions
         if line.defines_var.count > 0 {
@@ -554,39 +650,70 @@ build_cps :: (lines: [] Parsed_Line) -> str {
         
         // Get the captures for this perform
         captures := captures_needed[i];
-        
-        // Build use clause if we have captures
-        use_clause: str;
+
+        vars_here := vars_local_at[i];
+
+        // Rewrite captured variable references in current code body to __ctx__.varname
+        // Must happen BEFORE building ctx_arg so the struct literal isn't rewritten
+        rewritten_body: str;
         if captures.count > 0 {
-            use_buf: dyn_str;
-            use_buf.allocator = context.temp_allocator;
-            use_buf->append(" use #stack_alloc (");
-            for j in 0 .. captures.count {
-                if j > 0 do use_buf->append(", ");
-                use_buf->append(captures[j]);
-            }
-            use_buf->append(")");
-            use_clause = use_buf;
+            rewritten_body = rewrite_captures(code, captures);
         } else {
-            use_clause = "";
+            rewritten_body = code;
+        }
+
+        // Build ctx struct literal
+        ctx_arg: str;
+        if captures.count > 0 {
+            ctx_buf: dyn_str;
+            ctx_buf.allocator = context.temp_allocator;
+            ctx_buf->append(".{");
+            for j in 0 .. captures.count {
+                if j > 0 do ctx_buf->append(", ");
+                cap := captures[j];
+                bare_cap: str;
+                prefix_idx := cap->index_of("__ctx__.");
+                if prefix_idx == 0 {
+                    bare_cap = cap[8 .. cap.count];
+                } else {
+                    bare_cap = cap;
+                }
+                ctx_buf->append(bare_cap);
+                ctx_buf->append("=");
+                is_from_parent := true;
+                for v in vars_here {
+                    if v == bare_cap {
+                        is_from_parent = false;
+                        break;
+                    }
+                }
+                if is_from_parent {
+                    ctx_buf->append("__ctx__.");
+                    ctx_buf->append(bare_cap);
+                } else {
+                    ctx_buf->append(bare_cap);
+                }
+            }
+            ctx_buf->append("}");
+            ctx_arg = ctx_buf;
+        } else {
+            ctx_arg = "0";
         }
         
         switch line.type {
             case .Type_Inferred_Perform {
-                // Build continuation
+                // Build continuation: ctx_arg, (__ctx__, var_name) => { body }
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
-                continuation->append("(");
+                continuation->append(ctx_arg);
+                continuation->append(", (__ctx__, ");
                 continuation->append(line.var_name);
-                continuation->append(")");
-                continuation->append(use_clause);
-                continuation->append(" => {\n        ");
+                continuation->append(") => {\n        ");
                 
-                // If this is the last perform and there's no code yet, add empty body
-                if code.count == 0 {
+                if rewritten_body.count == 0 {
                     continuation->append("return");
                 } else {
-                    continuation->append(code);
+                    continuation->append(rewritten_body);
                 }
                 
                 continuation->append("\n    }");
@@ -604,19 +731,17 @@ build_cps :: (lines: [] Parsed_Line) -> str {
                 // Build continuation with typed parameter
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
-                continuation->append("(");
+                continuation->append(ctx_arg);
+                continuation->append(", (__ctx__, ");
                 continuation->append(line.var_name);
                 continuation->append(": ");
                 continuation->append(line.var_type);
-                continuation->append(")");
-                continuation->append(use_clause);
-                continuation->append(" => {\n        ");
+                continuation->append(") => {\n        ");
                 
-                // If this is the last perform and there's no code yet, add empty body
-                if code.count == 0 {
+                if rewritten_body.count == 0 {
                     continuation->append("return");
                 } else {
-                    continuation->append(code);
+                    continuation->append(rewritten_body);
                 }
                 
                 continuation->append("\n    }");
@@ -631,18 +756,16 @@ build_cps :: (lines: [] Parsed_Line) -> str {
             }
             
             case .Non_Binding_Perform {
-                // Build continuation with no parameters
+                // Build continuation with no value parameter, only ctx
                 continuation: dyn_str;
                 continuation.allocator = context.temp_allocator;
-                continuation->append("()");
-                continuation->append(use_clause);
-                continuation->append(" => {\n        ");
+                continuation->append(ctx_arg);
+                continuation->append(", (__ctx__) => {\n        ");
                 
-                // If this is the last perform and there's no code yet, add empty body
-                if code.count == 0 {
+                if rewritten_body.count == 0 {
                     continuation->append("return");
                 } else {
-                    continuation->append(code);
+                    continuation->append(rewritten_body);
                 }
                 
                 continuation->append("\n    }");
@@ -689,8 +812,6 @@ build_cps :: (lines: [] Parsed_Line) -> str {
 }
 
 message_handler :: (ext, msg) => {
-    eprintf("Fx Extension Message: {p}\n", msg)
-
     switch msg {
         case .ExpandMacro as em {
             // All macros are handled via handle_macro above

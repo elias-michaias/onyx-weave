@@ -7,16 +7,29 @@ use weave {*}
 
 #load "src/module.onyx"
 
-program :: () => {
-    return Console.print("Type something:", 0, _ => {
-        return Console.read(0, (_, txt) => {
-            return Console.print("closure test (should print what you typed):", .{txt=txt}, _ => {
-                return Console.print(_.txt, "hoopla", _ => {
-                    return _
-                })
-            })
-        })
-    })
+// program :: () => {
+//     return Each.choose(.["yes", "no"], null, (_, c) => {
+//         return Console.print(str.concat("Type something: ", c), null, _ => {
+//             return Console.read(null, (_, txt) => {
+//                 return Console.print("closure test (should print what you typed):", .{txt=txt}, _ => {
+//                     return Console.print(_.txt, "hoopla", _ => {
+//                         return _
+//                     })
+//                 })
+//             })
+//         })
+//     })
+// }
+
+program :: () => fx!{
+    x := perform Each.choose(.["yes", "no"])
+    msg := str.concat("cool: ", x)
+    perform Console.print(msg)
+    y := perform Console.read()
+    perform Console.print("capture test: ")
+    perform Each.guard(x == "yes")
+    perform Console.print(y)
+    return 12
 }
 
 MyHandler :: struct {
@@ -31,6 +44,8 @@ MyHandler :: struct {
             line := stdin_reader |> .read_line |> .strip_whitespace
             return e.k(e.ctx, line)
         }
+        macro (e: Each.Choose($T, $K, $C)) => e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
+        macro (e: Each.Guard($K, $C)) => e->handle()
     }
 }
 
