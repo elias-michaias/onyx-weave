@@ -17,20 +17,15 @@ res_succeed :: () -> Result(str, str) {
 
 program :: () => fx!{
     z := perform Unwrap.suspend(res_succeed())
-    x := perform Each.choose(.["yes", "no"])
+    x := perform Each.choose(.["yes ", "no "])
     msg := str.concat("will finish: ", x)
     perform Console.print(msg)
-    perform Each.guard(x == "yes")
-    y := perform Console.read()
-    perform Console.print("capture test: ")
-    perform Console.print(y)
-    perform Console.print(z)
-    return x
+    return str.concat(x, z)
 }
 
 MyHandler :: struct {
     handler :: #match {
-        macro (e: Console.Print($K, $C)) => e->handle()
+        macro (e: Console.Print($K, $C)) => e->handle() 
         macro (e: Console.Read($K, $C)) => {
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
@@ -43,7 +38,9 @@ MyHandler :: struct {
     }
 }
 
-console_map :: (f: () -> $T) -> T {
+fx_apply :: (f: () -> $T/{
+    Fx.max_ctx_size(16)
+}) -> T {
     return f()
 }
 
@@ -51,7 +48,7 @@ main :: () {
     println(typeof program)
 
     result := program
-            |> console_map
+            |> fx_apply
             |> run(MyHandler)
 
     printf("=======\nresult type: {}\nresult: {}\n", typeof result, result)

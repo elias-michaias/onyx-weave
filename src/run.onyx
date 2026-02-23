@@ -28,6 +28,8 @@ FxScopedHandler :: interface (T: type_expr) {
     handle(t)
 }
 
+concretize :: macro ($T: type_expr) => T.{}
+
 run :: #match {
     macro (e: Fx.Done($T), $Handle: type_expr) => e.value
     macro (e: Result($T/FxHandleable, $E), $Handle: type_expr) -> Result(typeof T.{} |> .handle |> run(Handle), E) {
@@ -83,6 +85,46 @@ run :: #match {
 }
 
 Fx :: struct {
+
+    max_total_size :: interface (T: type_expr, N: u32) {
+        t as T
+        { check(t, N) } -> bool
+
+        check :: #match {
+            macro (e: $T/FxHandleable, $N: u32) -> #auto where (sizeof T <= N) {
+                return true
+            } 
+            macro (e: $T/FxHandleable, $N: u32) -> #auto where (sizeof T > N) {} 
+        }
+    }
+    max_ctx_size :: interface (T: type_expr, N: u32) {
+        t as T
+        { check(t, N) } -> bool
+
+        check :: #match {
+            macro (e: Each.Choose($T, $K, $C), $N: u32) => check(K.{}, N)
+            macro (e: Unwrap.Suspend($T, $I, $K, $C), $N: u32) => check(K.{}, N)
+            macro (e: $T/FxHandleable, $N: u32) -> #auto where computes(T, N) {
+                return check(e->handle(), N)
+            } 
+            macro (e: $T/FxHandleable, $N: u32) -> #auto {} 
+            macro (e: $T, $N: u32) => true
+        }
+
+        computes :: interface (T: type_expr, N: u32) {
+            t as T
+            { check(t.ctx, N) } -> bool
+
+            check :: #match {
+                macro (t: $T, $N: u32) -> bool where sizeof T <= N {
+                    return true
+                }
+                macro (t: $T, $N: u32) -> void where sizeof T > N {}
+            }
+        }
+    }
+
+    
     Done :: struct (T: type_expr) {
         value: T
     }

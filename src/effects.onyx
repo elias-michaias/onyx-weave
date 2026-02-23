@@ -45,8 +45,6 @@ Unwrap :: struct {
         Err: Unwrap.Resumable(E, I, K, C)    
         Ok: K
 
-        concretize :: macro ($T: type_expr) => T.{}
-
         unwrap :: macro (e: Unwrap.Suspend($E, $K, $T, $C)) => {
             switch e {
                 case .Ok as ok do return ok
@@ -63,6 +61,8 @@ Unwrap :: struct {
             }
             (self: Unwrap.Suspend($E, $I, $K, $C)) => K.{}
         }
+
+        capacity :: macro (e: Unwrap.Suspend($E, $T, $K, $C)) => sizeof C
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -124,6 +124,8 @@ Value :: struct {
             Value.Suspend.handle(t)
         }
 
+        capacity :: macro (e: Value.Suspend($T, $K, $C)) => sizeof C
+
         t :: struct {
             empty :: macro () => Value.Suspend(void, void, void).{}
         }
@@ -165,6 +167,8 @@ Console :: struct {
             Console.Read.handle(t)
         }
 
+        capacity :: macro (e: Console.Read($K, $C)) => sizeof C
+
         t :: struct {
             empty :: macro () => Console.Read(void, void).{}
         }
@@ -185,6 +189,8 @@ Console :: struct {
             t as T
             Console.Print.handle(t)
         }
+
+        capacity :: macro (e: Console.Print($K, $C)) => sizeof C
 
         t :: struct {
             empty :: macro () => Console.Print(void, void).{}
@@ -243,6 +249,8 @@ Each :: struct {
             Each.Choose.handle(t)
         }
 
+        capacity :: macro (e: Each.Choose($T, $K, $C)) => sizeof C
+
         t :: struct {
             empty :: macro () => Each.Choose(void, void, void).{}
         }
@@ -272,6 +280,8 @@ Each :: struct {
             t as T
             Each.Guard.handle(t)
         }
+
+        capacity :: macro (e: Each.Guard($K, $C)) => sizeof C
 
         t :: struct {
             empty :: macro () => Each.Guard(void, void).{}
