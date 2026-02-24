@@ -1,60 +1,36 @@
 package main
 
 use core {*}
-use core.io {Reader}
-use core {alloc}
+use core.io { Reader }
 use weave {*}
 
 #load "src/module.onyx"
 
-res_fail :: () -> Result(str, str) {
-    return .{ Err = "banana" }
+FxError :: enum {
+    GuardTriggered
 }
 
-res_succeed :: () -> Result(str, str) {
-    return .{ Ok = "apple" }
-}
-
-universe :: .["yes ", "no ", "maybe "]
+res_fail    :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
+res_succeed :: () -> Result(str, FxError) { return .{ Ok = "mushroom on" } }
 
 program :: () => fx!{
-    z := perform Unwrap.suspend(res_succeed())
-    list := Slice.copy(universe, context.allocator)
-    x := perform Each.choose(list)
-    msg := str.concat("will finish: ", x)
-    perform Console.print(msg)
-    return str.concat(x, z)
-}
+    perform Console.print("init")
 
-MyHandler :: struct {
-    handler :: #match {
-        (e: Console.Print($K, $C)) => {
-            println(e.p)
-            return e.k(e.ctx) 
-        }
-        (e: Console.Read($K, $C)) => {
-            stdin_reader := Reader.make(&stdio.stream)
-            defer Reader.free(&stdin_reader)
-            line := stdin_reader |> .read_line |> .strip_whitespace
-            return e.k(e.ctx, line)
-        }
-        (e: Each.Choose($T, $K, $C)) => {
-            return e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
-        }
-        (e: Each.Guard($K, $C)) => e->handle()
-        (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler, C) {
-            switch e {
-                case .Ok as ok do return .{ Ok = handler(ok) }
-                case .Err as err do return .{ Err = err }
-            }
-        }
-    }
+    w := perform Console.read()
+    perform Console.print(w)
+
+    r2 := perform Unwrap.suspend(res_fail())
+    msg := str.concat(r2, " pizza")
+    perform Console.print(msg)
+
+    return 19
 }
 
 fx_apply :: (f: () -> $T/{
-    Fx.max_fx_size(40),
-    Fx.cant._1(Value.t)
-}) -> T {
+    Fx.returns(i32),
+    Fx.can._2(Console.t, Unwrap.t),
+    Fx.max_ctx_size(16)
+}) => {
     return f()
 }
 
@@ -63,15 +39,37 @@ main :: () {
 
     result := program
             |> fx_apply
-            |> run(MyHandler)
+            |> run(struct {
+                handler :: #match {
+                    (self: Console.Print($K, $C)) => {
+                        printf("{}???\n", self.p)
+                        return self.k(self.ctx)
+                    }
+                    (self: Console.Read($K, $C)) => self->handle()
+                    (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler |> run, C) {
+                        switch e {
+                            case .Ok as ok do return .{ Ok = handler(ok) |> run }
+                            case .Err as err do return .{ Err = err }
+                        }
+                    }
+                }
+            })
 
-    printf("=======\nresult type: {}\nresult: {}\n", typeof result, result)
+    println("CONTROL FLOW IS RETURNED TO MAIN.")
+
+    handler :: #match {
+        (self: Console.Print($K, $C)) => {
+            printf("{}!!!\n", self.p)
+            return self.k(self.ctx)
+        }
+    }
+
+    log := switch result {
+        case .Err as err => err
+            |> .resume("pineapple on") 
+            |> run 
+        case .Ok as ok => ok
+    }
+
+    println(log)
 }
-
-
-
-
-
-
-
-
