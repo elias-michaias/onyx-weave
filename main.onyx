@@ -2,63 +2,74 @@ package main
 
 use core {*}
 use core.io { Reader }
-use core {alloc}
 use weave {*}
 
 #load "src/module.onyx"
 
 FxError :: enum {
-    PrintFoo
     GuardTriggered
 }
 
-res_fail :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
-res_succeed :: () -> Result(str, FxError) { return .{ Ok = "placeholder1" } }
-opt_fail :: () -> Optional(str) { return .{} }
-opt_succeed :: () -> Optional(str) { return .{ Some = "placeholder2" } }
+res_fail    :: () -> Result(str, FxError) { return .{ Err = .GuardTriggered } }
+res_succeed :: () -> Result(str, FxError) { return .{ Ok = "mushroom on" } }
 
-universe :: .["pineapple", "cheese", "pepperoni", "sausage"]
+program :: () => fx!{
+    perform Console.print("init")
 
-program :: macro () => fx!{
-    
-    perform Console.print("Type something: ")
-    txt := perform Console.read()
-    perform Console.print("closure test (should print what you typed): ")
-    perform Console.print(txt)
+    w := perform Console.read()
+    perform Console.print(w)
 
-    return 12
+    r2 := perform Unwrap.suspend(res_fail())
+    msg := str.concat(r2, " pizza")
+    perform Console.print(msg)
+
+    return 19
 }
 
-MyHandler :: struct {
-    handler :: #match {
-        macro (e: Console.Print($K)) => {
-            printf("{}\n", e.p)
-            return e.k()
-        }
-        macro (e: Console.Read($K)) => {
-            stdin_reader := Reader.make(&stdio.stream)
-            defer Reader.free(&stdin_reader)
-            line := stdin_reader |> .read_line |> .strip_whitespace
-            return e.k(line)
-        }
-    }
+fx_apply :: (f: () -> $T/{
+    Fx.returns(i32),
+    Fx.can._2(Console.t, Unwrap.t),
+    Fx.max_ctx_size(16)
+}) => {
+    return f()
 }
 
 main :: () {
-    println(typeof program())
+    println(typeof program)
 
-    result := program()
-            |> run(MyHandler)
-            |> Each.prune
+    result := program
+            |> fx_apply
+            |> run(struct {
+                handler :: #match {
+                    (self: Console.Print($K, $C)) => {
+                        printf("{}???\n", self.p)
+                        return self.k(self.ctx)
+                    }
+                    (self: Console.Read($K, $C)) => self->handle()
+                    (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler |> run, C) {
+                        switch e {
+                            case .Ok as ok do return .{ Ok = handler(ok) |> run }
+                            case .Err as err do return .{ Err = err }
+                        }
+                    }
+                }
+            })
 
-    println(typeof result)
-    println(result)
+    println("CONTROL FLOW IS RETURNED TO MAIN.")
+
+    handler :: #match {
+        (self: Console.Print($K, $C)) => {
+            printf("{}!!!\n", self.p)
+            return self.k(self.ctx)
+        }
+    }
+
+    log := switch result {
+        case .Err as err => err
+            |> .resume("pineapple on") 
+            |> run 
+        case .Ok as ok => ok
+    }
+
+    println(log)
 }
-
-
-
-
-
-
-
-

@@ -3,33 +3,16 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:22:16
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:16:20
 do do {
-    return Console.read((z) => {
-        return str.concat(z, " sandwich\n")
+    return Console.print("init", 0, (__ctx__) => {
+        return Console.read(0, (__ctx__, w) => {
+        return Console.print(w, 0, (__ctx__) => {
+        return Unwrap.suspend(res_fail(), 0, (__ctx__, r2) => {
+        msg := str.concat(r2, " pizza")
+        return Console.print(msg, 0, (__ctx__) => {
+        return 19
     })
-}
-
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:27:26
-do do {
-    return Console.print("Type something: ", () => {
-        return Console.read((txt) => {
-        return Console.print("closure test (should print what you typed): ", () use (txt) => {
-        return Console.print(txt, () => {
-        return 12
-    })
-    })
-    })
-    })
-}
-
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:27:26
-do do {
-    return Console.print("Type something: ", () => {
-        return Console.read((txt) => {
-        return Console.print("closure test (should print what you typed): ", () use (txt) => {
-        return Console.print(txt, () => {
-        return 12
     })
     })
     })
