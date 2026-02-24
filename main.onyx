@@ -29,24 +29,20 @@ program :: () => fx!{
 MyHandler :: struct {
     handler :: #match {
         (e: Console.Print($K, $C)) => {
-            println(sizeof typeof e)
             println(e.p)
             return e.k(e.ctx) 
         }
         (e: Console.Read($K, $C)) => {
-            println(sizeof typeof e)
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
             return e.k(e.ctx, line)
         }
         (e: Each.Choose($T, $K, $C)) => {
-            printf("foo: {}\n", sizeof typeof e)
             return e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
         }
         (e: Each.Guard($K, $C)) => e->handle()
         (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler, C) {
-            println(sizeof typeof e)
             switch e {
                 case .Ok as ok do return .{ Ok = handler(ok) }
                 case .Err as err do return .{ Err = err }
@@ -56,7 +52,7 @@ MyHandler :: struct {
 }
 
 fx_apply :: (f: () -> $T/{
-    Fx.max_fx_size(32),
+    Fx.max_fx_size(40),
     Fx.cant._1(Value.t)
 }) -> T {
     return f()
