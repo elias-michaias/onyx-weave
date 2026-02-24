@@ -62,6 +62,8 @@ Unwrap :: struct {
             (self: Unwrap.Suspend($E, $I, $K, $C)) => K.{}
         }
 
+        crawl :: macro (e: Unwrap.Suspend($E, $T, $K, $C)) => K.{}
+
         capacity :: macro (e: Unwrap.Suspend($E, $T, $K, $C)) => sizeof C
 
         handleable :: interface (T: type_expr) {
@@ -113,11 +115,13 @@ Unwrap :: struct {
 Value :: struct {
 
     Suspend :: struct (T: type_expr, K: type_expr, C: type_expr) {
-        p: T
         k: (C, T) -> K
+        p: T
         ctx: C
 
         handle :: macro (e: Value.Suspend($T, $K, $C)) => e.k(e.ctx, e.p)
+         
+        crawl :: macro (e: Value.Suspend($T, $K, $C)) => K.{}
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -132,11 +136,11 @@ Value :: struct {
     }
 
     suspend :: macro (value: $T, ctx: $C, continuation: (C, T) -> $K) => {
-        return Value.Suspend(T, K).{value,continuation,ctx}
+        return Value.Suspend(T, K, C).{continuation,value,ctx}
     }
     
     handle :: #match {
-        (e: Value.Suspend($T, $K)) => e->handle()
+        (e: Value.Suspend($T, $K, $C)) => e->handle()
     }
 
     handleable :: interface (T: type_expr) {
@@ -162,6 +166,8 @@ Console :: struct {
             return self.k(self.ctx, line)
         }
 
+        crawl :: macro (e: Console.Read($K, $C)) => K.{}
+
         handleable :: interface (T: type_expr) {
             t as T
             Console.Read.handle(t)
@@ -176,14 +182,16 @@ Console :: struct {
     read :: (ctx: $C, k: (C, str) -> $T) => Console.Read(T, C).{k, ctx}
 
     Print :: struct (K: type_expr, C: type_expr) {
-        p: str
         k: (C) -> K
+        p: str
         ctx: C
         
         handle :: macro (self: Console.Print($K, $C)) -> K {
             printf("{}\n", self.p)
             return self.k(self.ctx)
         }
+
+        crawl :: macro (e: Console.Print($K, $C)) => K.{}
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -196,7 +204,7 @@ Console :: struct {
             empty :: macro () => Console.Print(void, void).{}
         }
     }
-    print :: (input: str, ctx: $C, k: (C) -> $T) => Console.Print(T, C).{input, k, ctx}
+    print :: (input: str, ctx: $C, k: (C) -> $T) => Console.Print(T, C).{k, input, ctx}
 
     handle :: #match {
         (self: Console.Print($K, $C)) => self->handle()
@@ -238,11 +246,16 @@ Each :: struct {
     }
 
     Choose :: struct (T: type_expr, K: type_expr, C: type_expr) {
-        p: [] T
         k: (C, T) -> K
+        p: [] T
         ctx: C
 
-        handle :: macro (e: Each.Choose($T, $K, $C)) => e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
+        handle :: macro (e: Each.Choose($T, $K, $C)) => {
+            result := e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
+            return result
+        }
+
+        crawl :: macro (e: Each.Choose($T, $K, $C)) => K.{}
 
         handleable :: interface (T: type_expr) {
             t as T
@@ -256,7 +269,7 @@ Each :: struct {
         }
     }
 
-    choose :: macro (inputs: [] $T, ctx: $C, cont: (C, T) -> $K) => Each.Choose(T, K, C).{Slice.copy(inputs), cont, ctx}
+    choose :: macro (inputs: [] $T, ctx: $C, cont: (C, T) -> $K) => Each.Choose(T, K, C).{cont, inputs, ctx}
 
     Unification :: union (T: type_expr) {
         Unified: T
@@ -276,6 +289,8 @@ Each :: struct {
             }
         }
 
+        crawl :: macro (e: Each.Guard($K, $C)) => K.{}
+
         handleable :: interface (T: type_expr) {
             t as T
             Each.Guard.handle(t)
@@ -291,8 +306,8 @@ Each :: struct {
     guard :: macro (cond: bool, ctx: $C, cont: (C) -> $K) => Each.Guard(K, C).{cond, cont, ctx}
 
     handle :: #match {
-        (e: Each.Choose($T, $K, $C)) => e->handle()
-        (e: Each.Guard($K, $C)) => e->handle()
+        (e: Each.Choose($T, $K, $C)) => e->crawl()
+        (e: Each.Guard($K, $C)) => e->crawl()
     }
 
     handleable :: interface (T: type_expr) {
@@ -311,6 +326,8 @@ Each :: struct {
         k: (typeof run(T.{})) -> K
 
         handle :: macro (e: Fx.Map($T, $K)) => e.p |> run |> e.k
+
+        crawl :: macro (e: Fx.Map($T, $K)) => K.{}
 
         handleable :: interface (T: type_expr) {
             t as T

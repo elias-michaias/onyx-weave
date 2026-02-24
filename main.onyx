@@ -15,9 +15,12 @@ res_succeed :: () -> Result(str, str) {
     return .{ Ok = "apple" }
 }
 
+universe :: .["yes ", "no ", "maybe "]
+
 program :: () => fx!{
     z := perform Unwrap.suspend(res_succeed())
-    x := perform Each.choose(.["yes ", "no "])
+    list := Slice.copy(universe, context.allocator)
+    x := perform Each.choose(list)
     msg := str.concat("will finish: ", x)
     perform Console.print(msg)
     return str.concat(x, z)
@@ -25,21 +28,36 @@ program :: () => fx!{
 
 MyHandler :: struct {
     handler :: #match {
-        macro (e: Console.Print($K, $C)) => e->handle() 
-        macro (e: Console.Read($K, $C)) => {
+        (e: Console.Print($K, $C)) => {
+            println(sizeof typeof e)
+            println(e.p)
+            return e.k(e.ctx) 
+        }
+        (e: Console.Read($K, $C)) => {
+            println(sizeof typeof e)
             stdin_reader := Reader.make(&stdio.stream)
             defer Reader.free(&stdin_reader)
             line := stdin_reader |> .read_line |> .strip_whitespace
             return e.k(e.ctx, line)
         }
-        macro (e: Each.Choose($T, $K, $C)) => e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
-        macro (e: Each.Guard($K, $C)) => e->handle()
-        macro (e: Unwrap.Suspend($T, $I, $K, $C)) => e->handle()
+        (e: Each.Choose($T, $K, $C)) => {
+            printf("foo: {}\n", sizeof typeof e)
+            return e.p->map((i) use (e) => e.k(e.ctx, i) |> run)
+        }
+        (e: Each.Guard($K, $C)) => e->handle()
+        (e: Unwrap.Suspend($E, $T, $K/FxHandleable, $C)) -> Unwrap.Suspend(E, T, typeof K.{} |> handler, C) {
+            println(sizeof typeof e)
+            switch e {
+                case .Ok as ok do return .{ Ok = handler(ok) }
+                case .Err as err do return .{ Err = err }
+            }
+        }
     }
 }
 
 fx_apply :: (f: () -> $T/{
-    Fx.max_ctx_size(16)
+    Fx.max_fx_size(32),
+    Fx.cant._1(Value.t)
 }) -> T {
     return f()
 }

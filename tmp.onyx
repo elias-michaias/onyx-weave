@@ -3,10 +3,11 @@
 // DO NOT MODIFY AS IT WILL BE REGENERATED ON NEXT COMPILATION
 //
 
-// Generated from /home/elias/Projects/onyx-playground/main.onyx:18:20
+// Generated from /home/elias/Projects/onyx-playground/main.onyx:20:20
 do do {
     return Unwrap.suspend(res_succeed(), 0, (__ctx__, z) => {
-        return Each.choose(.["yes ", "no "], .{z=z}, (__ctx__, x) => {
+        list := Slice.copy(universe, context.allocator)
+        return Each.choose(list, .{z=z}, (__ctx__, x) => {
         msg := str.concat("will finish: ", x)
         return Console.print(msg, .{z=__ctx__.z, x=x}, (__ctx__) => {
         return str.concat(__ctx__.x, __ctx__.z)
