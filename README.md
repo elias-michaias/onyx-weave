@@ -30,7 +30,7 @@ The effect chain is encoded in the return type of every effectful function. A fu
 
 Each effect is a concrete struct carrying a payload and a continuation:
 
-```onyx
+```fs
 Console.Print :: struct ($K: type_expr, $C: type_expr) {
     p:   str      // payload — what we're asking the handler to do
     k:   ($C) -> $K  // continuation — the rest of the program
@@ -44,7 +44,7 @@ The handler receives the struct, inspects the payload, and calls `k` with the co
 
 You write this:
 
-```onyx
+```fs
 program :: () => fx!{
     x := perform Each.choose(.["yes", "no"])
     msg := str.concat("cool: ", x)
@@ -57,7 +57,7 @@ program :: () => fx!{
 
 The `fx!` macro rewrites it to CPS, inserting context structs and continuation functions:
 
-```onyx
+```fs
 return Each.choose(.["yes", "no"], 0, (__ctx__, x) => {
     msg := str.concat("cool: ", x)
     return Console.print(msg, .{x=x, msg=msg}, (__ctx__) => {
@@ -76,7 +76,7 @@ Only the variables that are actually needed downstream get captured. `msg` is ca
 
 A handler is a type with an overloaded `handle` function. You pass the type — not a value — to `run`:
 
-```onyx
+```fs
 MyHandler :: struct {
     handler :: #match {
         macro (e: Console.Print($K, $C)) => {
@@ -100,7 +100,7 @@ Because `MyHandler` is a type, its entire namespace is available to the `run` ma
 
 Functions can constrain the effects their arguments perform:
 
-```onyx
+```fs
 console_map :: (f: () -> $T/{
     Fx.returns(i32),
     Fx.can._2(Console.t, Unwrap.t),
@@ -134,7 +134,7 @@ With a sufficiently mature compiler that can devirtualize the function pointer c
 
 ## Example
 
-```onyx
+```fs
 package main
 
 use core {*}
@@ -234,8 +234,9 @@ This design requires a specific combination of language features that is difficu
 
 - **Types as namespaces** — handler types carry their entire overload set as named definitions, accessible to the `run` macro at expansion time
 - **Structural overload dispatch** — `#match` resolves to different handler implementations based on the concrete effect type, without any runtime tag
+- **Explicit closed-world overloading** - `#match` blocks allow for ordered match cases for function overloads, giving the programmer understandable code
 - **Compile-time type destructuring** — `Console.Print($K, $C)` extracts the type parameters of a concrete generic type in a function head
-- **Macros with guaranteed inlining** — the `macro` keyword ensures handler dispatch is expanded at the call site, not called through an additional indirection
+- **Functions with guaranteed inlining** — the `macro` keyword ensures the recursive `run` function is expanded at the call site, not called through an additional indirection
 - **Type-level state machines** — the `Fx.seq` constraints use phantom boolean parameters to enforce ordering of effects in the type checker
 
 Most languages have one or two of these. Onyx has all of them, and the combination is what makes zero-overhead modular effects possible. In particular: you cannot pass an entire overload set as a first-class argument in C++, Rust, or Go. This is the property that makes handler modularity and zero-cost dispatch mutually achievable rather than a tradeoff.
