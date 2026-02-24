@@ -2,7 +2,7 @@
 
 **Algebraic effects and handlers for the Onyx programming language — zero heap allocation, compile-time dispatch, direct style.**
 
-> [NOTE]
+> [!NOTE]
 > This library is currently a proof-of-concept. Everything is subject to change.
 
 ---
